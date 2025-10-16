@@ -37,7 +37,13 @@ def remove_accents_and_clean(s):
 
 
 def compile_latex(cwd, pdf_file, timeout=30):
+    print("=" * 80)
     print("GENERATING LATEX")
+    print(f"[DEBUG] cwd (latex folder): {cwd}")
+    print(f"[DEBUG] target pdf_file: {pdf_file}")
+    print(f"[DEBUG] cwd exists: {osp.exists(cwd)}")
+    print(f"[DEBUG] cwd is absolute: {osp.isabs(cwd)}")
+    print("=" * 80)
 
     commands = [
         ["pdflatex", "-interaction=nonstopmode", "template.tex"],
@@ -46,7 +52,8 @@ def compile_latex(cwd, pdf_file, timeout=30):
         ["pdflatex", "-interaction=nonstopmode", "template.tex"],
     ]
 
-    for command in commands:
+    for i, command in enumerate(commands):
+        print(f"\n[DEBUG] Running command {i+1}/4: {' '.join(command)}")
         try:
             result = subprocess.run(
                 command,
@@ -56,8 +63,13 @@ def compile_latex(cwd, pdf_file, timeout=30):
                 text=True,
                 timeout=timeout,
             )
-            print("Standard Output:\n", result.stdout)
-            print("Standard Error:\n", result.stderr)
+            print(f"[DEBUG] Command {i+1} return code: {result.returncode}")
+            if result.returncode != 0:
+                print(f"[WARNING] Command failed with return code {result.returncode}")
+            # Only show full output for errors or final compile
+            if result.returncode != 0 or i == len(commands) - 1:
+                print("Standard Output:\n", result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout)
+                print("Standard Error:\n", result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr)
         except subprocess.TimeoutExpired:
             print(
                 f"EXCEPTION in compile_latex: LaTeX timed out after {timeout} seconds."
@@ -69,14 +81,46 @@ def compile_latex(cwd, pdf_file, timeout=30):
             )
             print(traceback.format_exc())
 
+    print("\n" + "=" * 80)
     print("FINISHED GENERATING LATEX")
+    
+    source_pdf = osp.join(cwd, "template.pdf")
+    print(f"[DEBUG] Checking for generated PDF at: {source_pdf}")
+    print(f"[DEBUG] PDF exists: {osp.exists(source_pdf)}")
+    
+    if osp.exists(source_pdf):
+        pdf_size = osp.getsize(source_pdf)
+        print(f"[DEBUG] PDF size: {pdf_size} bytes")
+    
+    print(f"[DEBUG] Attempting to move to: {pdf_file}")
+    print(f"[DEBUG] Target directory exists: {osp.exists(osp.dirname(pdf_file))}")
+    print("=" * 80)
 
     try:
-        shutil.move(osp.join(cwd, "template.pdf"), pdf_file)
-    except FileNotFoundError:
-        print("Failed to rename PDF.")
+        if not osp.exists(source_pdf):
+            print(f"[ERROR] Source PDF not found: {source_pdf}")
+            print(f"[ERROR] Files in latex dir: {os.listdir(cwd)}")
+            return False
+        
+        # Ensure target directory exists
+        target_dir = osp.dirname(pdf_file)
+        if not osp.exists(target_dir):
+            print(f"[WARNING] Target directory doesn't exist, creating: {target_dir}")
+            os.makedirs(target_dir, exist_ok=True)
+        
+        shutil.move(source_pdf, pdf_file)
+        print(f"[SUCCESS] PDF moved to: {pdf_file}")
+        print(f"[SUCCESS] Final PDF exists: {osp.exists(pdf_file)}")
+        return True
+    except FileNotFoundError as e:
+        print(f"[ERROR] Failed to rename PDF: {e}")
         print("EXCEPTION in compile_latex while moving PDF:")
         print(traceback.format_exc())
+        return False
+    except Exception as e:
+        print(f"[ERROR] Unexpected error moving PDF: {e}")
+        print(traceback.format_exc())
+        return False
 
 
 def detect_pages_before_impact(latex_folder, timeout=30):
@@ -236,7 +280,7 @@ This JSON will be automatically parsed, so ensure the format is precise."""
 
     try:
         text, msg_history = get_response_from_llm(
-            msg=citation_first_prompt_template.format(
+            prompt=citation_first_prompt_template.format(
                 current_round=current_round + 1,
                 total_rounds=total_rounds,
                 Idea=idea_text,
@@ -284,7 +328,7 @@ This JSON will be automatically parsed, so ensure the format is precise."""
 
     try:
         text, msg_history = get_response_from_llm(
-            msg=citation_second_prompt_template.format(
+            prompt=citation_second_prompt_template.format(
                 papers=papers_str,
                 current_round=current_round + 1,
                 total_rounds=total_rounds,
@@ -460,13 +504,29 @@ def perform_writeup(
     big_model="o1-2024-12-17",
     n_writeup_reflections=3,
     page_limit=8,
+    citations_text=None,
 ):
+    print("\n" + "=" * 80)
+    print("STARTING PERFORM_WRITEUP")
+    print(f"[DEBUG] base_folder: {base_folder}")
+    print(f"[DEBUG] base_folder exists: {osp.exists(base_folder)}")
+    print(f"[DEBUG] base_folder is absolute: {osp.isabs(base_folder)}")
+    print(f"[DEBUG] Current working directory: {os.getcwd()}")
+    print(f"[DEBUG] big_model: {big_model}")
+    print(f"[DEBUG] n_writeup_reflections: {n_writeup_reflections}")
+    print(f"[DEBUG] citations_text provided: {citations_text is not None}")
+    print("=" * 80 + "\n")
+    
     compile_attempt = 0
     base_pdf_file = osp.join(base_folder, f"{osp.basename(base_folder)}")
     latex_folder = osp.join(base_folder, "latex")
+    
+    print(f"[DEBUG] base_pdf_file (without extension): {base_pdf_file}")
+    print(f"[DEBUG] latex_folder: {latex_folder}")
 
     # Cleanup any previous latex folder and pdf
     if osp.exists(latex_folder):
+        print(f"[DEBUG] Removing existing latex folder: {latex_folder}")
         shutil.rmtree(latex_folder)
     # if osp.exists(pdf_file):
     #     os.remove(pdf_file)
@@ -635,20 +695,42 @@ def perform_writeup(
             plot_descriptions=plot_descriptions_str,
         )
 
+        print("\n" + "=" * 80)
+        print("[DEBUG] Requesting initial LaTeX generation from LLM...")
+        print(f"[DEBUG] Model: {big_client_model}")
+        print(f"[DEBUG] Prompt length: {len(combined_prompt)} chars")
+        print("=" * 80)
+        
         response, msg_history = get_response_from_llm(
-            msg=combined_prompt,
+            prompt=combined_prompt,
             client=big_client,
             model=big_client_model,
             system_message=big_model_system_message,
             print_debug=False,
         )
 
+        print("\n" + "=" * 80)
+        print(f"[DEBUG] LLM response received. Length: {len(response)} chars")
+        print(f"[DEBUG] First 500 chars of response: {response[:500]}")
+        print("=" * 80)
+
         latex_code_match = re.search(r"```latex(.*?)```", response, re.DOTALL)
         if not latex_code_match:
+            print("[ERROR] No LaTeX code block found in LLM response!")
+            print(f"[ERROR] Full response (first 2000 chars): {response[:2000]}")
+            print("[ERROR] Checking for other code block markers...")
+            if "```" in response:
+                print(f"[ERROR] Found code blocks but not ```latex. First block: {response[response.find('```'):response.find('```')+200]}")
+            else:
+                print("[ERROR] No code blocks found at all in response")
             return False
+        
+        print(f"[DEBUG] Found LaTeX code block. Length: {len(latex_code_match.group(1))} chars")
         updated_latex_code = latex_code_match.group(1).strip()
+        print(f"[DEBUG] Writing LaTeX to: {writeup_file}")
         with open(writeup_file, "w") as f:
             f.write(updated_latex_code)
+        print(f"[SUCCESS] Wrote {len(updated_latex_code)} chars to template.tex")
 
         # Multiple reflection loops on the final LaTeX
         for i in range(n_writeup_reflections):
@@ -707,7 +789,7 @@ If you believe you are done, simply say: "I am done".
 """
 
             reflection_response, msg_history = get_response_from_llm(
-                msg=reflection_prompt,
+                prompt=reflection_prompt,
                 client=big_client,
                 model=big_client_model,
                 system_message=big_model_system_message,
