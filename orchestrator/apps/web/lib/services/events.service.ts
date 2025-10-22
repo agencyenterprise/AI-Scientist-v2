@@ -1,0 +1,263 @@
+import { getDb } from "../db/mongo"
+import { updateRun, findRunById } from "../repos/runs.repo"
+import { createStage, updateStage } from "../repos/stages.repo"
+import { createValidation } from "../repos/validations.repo"
+import { createArtifact } from "../repos/artifacts.repo"
+import { createEvent } from "../repos/events.repo"
+import { assertTransition } from "../state/runStateMachine"
+import { type CloudEventsEnvelope } from "../schemas/cloudevents"
+import { type RunStatus } from "../state/constants"
+import { logger } from "../logging/logger"
+
+export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
+  const runId = event.subject.replace("run/", "")
+  const eventSeq = event.extensions?.seq
+
+  if (eventSeq !== undefined) {
+    const run = await findRunById(runId)
+    if (!run) {
+      logger.warn({ runId, eventId: event.id }, "Run not found for event")
+      return
+    }
+
+    const lastSeq = run.lastEventSeq ?? 0
+    if (eventSeq <= lastSeq) {
+      logger.info({ runId, eventSeq, lastSeq }, "Ignoring out-of-order or duplicate event")
+      return
+    }
+  }
+
+  await createEvent({
+    _id: event.id,
+    runId,
+    type: event.type,
+    data: event.data,
+    source: event.source,
+    timestamp: new Date(event.time),
+    seq: eventSeq
+  })
+
+  switch (event.type) {
+    case "ai.run.started":
+      await handleRunStarted(runId, event, eventSeq)
+      break
+    case "ai.run.heartbeat":
+      await handleRunHeartbeat(runId, event, eventSeq)
+      break
+    case "ai.run.failed":
+      await handleRunFailed(runId, event, eventSeq)
+      break
+    case "ai.run.canceled":
+      await handleRunCanceled(runId, event, eventSeq)
+      break
+    case "ai.run.stage_started":
+      await handleStageStarted(runId, event, eventSeq)
+      break
+    case "ai.run.stage_progress":
+      await handleStageProgress(runId, event, eventSeq)
+      break
+    case "ai.run.stage_metric":
+      await handleStageMetric(runId, event, eventSeq)
+      break
+    case "ai.run.stage_completed":
+      await handleStageCompleted(runId, event, eventSeq)
+      break
+    case "ai.validation.auto_started":
+      await handleValidationAutoStarted(runId, event, eventSeq)
+      break
+    case "ai.validation.auto_completed":
+      await handleValidationAutoCompleted(runId, event, eventSeq)
+      break
+    case "ai.artifact.registered":
+      await handleArtifactRegistered(runId, event, eventSeq)
+      break
+    case "ai.run.log":
+      break
+    default:
+      logger.warn({ type: event.type }, "Unknown event type")
+  }
+
+  if (eventSeq !== undefined) {
+    await updateRun(runId, { lastEventSeq: eventSeq })
+  }
+}
+
+async function handleRunStarted(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  await transitionRunStatus(runId, "RUNNING", eventSeq)
+  await updateRun(runId, {
+    pod: {
+      id: data.pod_id,
+      instanceType: data.gpu,
+      region: data.region
+    },
+    lastHeartbeat: new Date(event.time)
+  })
+}
+
+async function handleRunHeartbeat(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  await updateRun(runId, {
+    lastHeartbeat: new Date(event.time)
+  })
+}
+
+async function handleRunFailed(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  await transitionRunStatus(runId, "FAILED", eventSeq)
+}
+
+async function handleRunCanceled(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  await transitionRunStatus(runId, "CANCELED", eventSeq)
+}
+
+async function handleStageStarted(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  const stageIndex = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"].indexOf(data.stage)
+  await createStage({
+    _id: `${runId}-${data.stage}`,
+    runId,
+    index: stageIndex,
+    name: data.stage,
+    status: "RUNNING",
+    startedAt: new Date(event.time),
+    progress: 0
+  })
+  await updateRun(runId, {
+    currentStage: {
+      name: data.stage,
+      progress: 0
+    }
+  })
+}
+
+async function handleStageProgress(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  await updateStage(`${runId}-${data.stage}`, {
+    progress: data.progress
+  })
+  await updateRun(runId, {
+    currentStage: {
+      name: data.stage,
+      progress: data.progress
+    }
+  })
+}
+
+async function handleStageMetric(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  const run = await findRunById(runId)
+  if (!run) return
+
+  const metrics = { ...(run.metrics || {}), [data.name]: data.value }
+  await updateRun(runId, { metrics })
+}
+
+async function handleStageCompleted(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  await updateStage(`${runId}-${data.stage}`, {
+    status: "COMPLETED",
+    completedAt: new Date(event.time),
+    progress: 1
+  })
+}
+
+async function handleValidationAutoStarted(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  await transitionRunStatus(runId, "AUTO_VALIDATING", eventSeq)
+}
+
+async function handleValidationAutoCompleted(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  
+  await createValidation({
+    _id: `${runId}-auto-${Date.now()}`,
+    runId,
+    kind: "auto",
+    verdict: data.verdict as "pass" | "fail",
+    rubric: data.scores as Record<string, number> | undefined,
+    notes: data.notes || "",
+    createdAt: new Date(event.time),
+    createdBy: data.model || "auto"
+  })
+
+  await transitionRunStatus(runId, "AWAITING_HUMAN", eventSeq)
+}
+
+async function handleArtifactRegistered(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  const data = event.data
+  await createArtifact({
+    _id: `${runId}-${data.kind}-${Date.now()}`,
+    runId,
+    key: data.key,
+    uri: data.key,
+    contentType: data.content_type,
+    size: data.bytes,
+    createdAt: new Date(event.time)
+  })
+}
+
+async function transitionRunStatus(
+  runId: string,
+  newStatus: RunStatus,
+  eventSeq: number | undefined
+): Promise<void> {
+  const run = await findRunById(runId)
+  if (!run) {
+    throw new Error(`Run ${runId} not found`)
+  }
+
+  try {
+    assertTransition(run.status, newStatus)
+  } catch (error) {
+    logger.warn(
+      { runId, from: run.status, to: newStatus, error },
+      "Skipping illegal state transition"
+    )
+    return
+  }
+
+  await updateRun(runId, { status: newStatus })
+}
+

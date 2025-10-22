@@ -2,6 +2,8 @@ import { getOverviewData } from "@/lib/data/overview"
 import { RunTable } from "@/components/RunTable"
 import { QueueStatus } from "@/components/QueueStatus"
 import type { RunStatus } from "@/lib/state/constants"
+import type { Run } from "@/lib/schemas/run"
+import type { Hypothesis } from "@/lib/schemas/hypothesis"
 import { formatDistanceToNow } from "date-fns"
 
 export const dynamic = "force-dynamic"
@@ -49,7 +51,7 @@ export default async function OverviewPage() {
           </a>
         </header>
         <RunTable
-          rows={data.latestRuns.map(({ run, hypothesis }) => ({
+          rows={data.latestRuns.map(({ run, hypothesis }: { run: Run; hypothesis?: Hypothesis }) => ({
             run,
             hypothesisTitle: hypothesis?.title
           }))}
@@ -62,7 +64,7 @@ export default async function OverviewPage() {
           <p className="text-sm text-slate-500">No recent runs linked to hypotheses.</p>
         ) : (
           <ul className="grid gap-4 md:grid-cols-2">
-            {data.topHypotheses.map(({ hypothesis, runCount, lastRunAt }) => (
+            {data.topHypotheses.map(({ hypothesis, runCount, lastRunAt }: { hypothesis: Hypothesis; runCount: number; lastRunAt: Date | string }) => (
               <li
                 key={hypothesis._id}
                 className="rounded-lg border border-slate-800 bg-slate-900/40 p-4"

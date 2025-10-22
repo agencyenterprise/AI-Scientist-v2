@@ -4,6 +4,7 @@ openai
 anthropic
 python-dotenv
 pymongo
+python-ulid
 # API Server
 fastapi
 uvicorn[standard]

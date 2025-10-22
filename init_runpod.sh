@@ -187,3 +187,12 @@ PYTHON_EOF
 echo "=== End of GPU Check ==="
 echo ""
 
+# Step 16: Start the pod worker
+echo "=== Starting Pod Worker ==="
+echo ""
+echo "🤖 Launching AI Scientist pod worker..."
+echo "   This will poll MongoDB for queued experiments and run them automatically."
+echo "   Press Ctrl+C to stop the worker gracefully."
+echo ""
+python pod_worker.py
+

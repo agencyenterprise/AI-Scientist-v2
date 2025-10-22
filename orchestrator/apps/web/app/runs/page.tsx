@@ -6,6 +6,8 @@ import { QueueStatus } from "@/components/QueueStatus"
 import { getRunsPage, getQueueStatus } from "@/lib/data/runs"
 import { getHypotheses } from "@/lib/data/hypotheses"
 import { RUN_STATUSES, type RunStatus } from "@/lib/state/constants"
+import type { Run } from "@/lib/schemas/run"
+import type { Hypothesis } from "@/lib/schemas/hypothesis"
 import { extract } from "@/lib/utils/extract"
 
 export const dynamic = "force-dynamic"
@@ -31,9 +33,9 @@ export default async function RunsPage({
     getQueueStatus()
   ])
 
-  const rows = items.map((run) => ({
+  const rows = items.map((run: Run) => ({
     run,
-    hypothesisTitle: hypotheses.items.find((hypothesis) => hypothesis._id === run.hypothesisId)?.title
+    hypothesisTitle: hypotheses.items.find((hypothesis: Hypothesis) => hypothesis._id === run.hypothesisId)?.title
   }))
 
   return (
@@ -50,7 +52,7 @@ export default async function RunsPage({
       />
       
       <RunsFilters
-        hypotheses={hypotheses.items.map((hypothesis) => ({ id: hypothesis._id, title: hypothesis.title }))}
+        hypotheses={hypotheses.items.map((hypothesis: Hypothesis) => ({ id: hypothesis._id, title: hypothesis.title }))}
       />
       {rows.length === 0 ? (
         <EmptyState title="No runs found" description="Adjust filters or launch a new run." />

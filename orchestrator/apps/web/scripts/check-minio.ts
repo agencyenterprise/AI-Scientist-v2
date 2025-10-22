@@ -58,12 +58,20 @@ async function main() {
 }
 
 async function listSampleObjects(bucket: string) {
-  const stream = minio.listObjectsV2(bucket, "", true, "", 5)
+  const stream = minio.listObjectsV2(bucket, "", true, "")
   const objects: Array<{ name: string; size: number }> = []
+  let count = 0
+  const maxObjects = 5
   return new Promise<typeof objects>((resolve, reject) => {
     stream.on("data", (obj) => {
+      if (count >= maxObjects) {
+        stream.destroy()
+        resolve(objects)
+        return
+      }
       if (obj && typeof obj.name === "string") {
         objects.push({ name: obj.name, size: obj.size ?? 0 })
+        count++
       }
     })
     stream.on("error", (error) => reject(error))

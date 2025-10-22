@@ -11,7 +11,7 @@ export function Pagination({ total, page, pageSize }: { total: number; page: num
   const setPage = (newPage: number) => {
     const params = new URLSearchParams(searchParams)
     params.set("page", newPage.toString())
-    router.replace(`${pathname}?${params.toString()}`)
+    router.replace(`${pathname}?${params.toString()}` as any)
   }
 
   return (

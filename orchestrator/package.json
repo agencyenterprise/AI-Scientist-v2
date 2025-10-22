@@ -12,6 +12,7 @@
     "typecheck": "pnpm --filter web typecheck",
     "test": "pnpm --filter web test",
     "e2e": "pnpm --filter web e2e",
-    "seed": "pnpm --filter web seed"
+    "seed": "pnpm --filter web seed",
+    "check:minio": "pnpm --filter web check:minio"
   }
 }

@@ -1,4 +1,5 @@
 import { getHypotheses } from "@/lib/data/hypotheses"
+import { type Hypothesis } from "@/lib/schemas/hypothesis"
 import { CreateHypothesisForm } from "@/components/CreateHypothesisForm"
 import { StartRunButton } from "@/components/StartRunButton"
 import { formatDistanceToNow } from "date-fns"
@@ -17,7 +18,7 @@ export default async function HypothesesPage() {
             Catalog of research hypotheses orchestrated by the AI Scientist.
           </p>
           <ul className="mt-6 space-y-4">
-            {items.map((hypothesis) => (
+            {items.map((hypothesis: Hypothesis) => (
               <li
                 key={hypothesis._id}
                 className="rounded-lg border border-slate-800 bg-slate-900/40 p-4"

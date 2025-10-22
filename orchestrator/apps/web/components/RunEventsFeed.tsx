@@ -40,7 +40,7 @@ export function RunEventsFeed({ runId }: { runId: string }) {
         <div key={event._id} className="rounded border border-slate-800 bg-slate-900/40 p-3">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>{event.type}</span>
-            <span>{new Date(event.ts).toLocaleTimeString()}</span>
+            <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
           </div>
           {event.message && <p className="mt-2 text-slate-200">{event.message}</p>}
           {event.payload && (

@@ -180,8 +180,10 @@ async function seedRun(options: {
       appendEvent({
         _id: randomUUID(),
         runId,
-        ts: subMinutes(new Date(), index * 10),
+        timestamp: subMinutes(new Date(), index * 10),
         type: "stage_progress",
+        data: {},
+        source: "seed",
         message: `Seed progress event ${index + 1}`,
         payload: { step: index + 1 },
         level: "info",

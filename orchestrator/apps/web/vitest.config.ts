@@ -8,11 +8,15 @@ const __dirname = dirname(__filename)
 export default defineConfig({
   test: {
     globals: true,
-    environment: "jsdom",
+    environment: "node",
     setupFiles: ["./tests/setup.ts"],
     include: ["lib/**/*.test.ts", "components/**/*.test.tsx", "components/**/__tests__/**/*.test.tsx"],
     alias: {
       "@": resolve(__dirname)
-    }
+    },
+    environmentMatchGlobs: [
+      ["components/**/*.test.tsx", "jsdom"],
+      ["components/**/__tests__/**/*.test.tsx", "jsdom"]
+    ]
   }
 })

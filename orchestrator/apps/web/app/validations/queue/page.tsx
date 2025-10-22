@@ -1,4 +1,7 @@
 import { getValidationQueue } from "@/lib/data/validations"
+import type { Run } from "@/lib/schemas/run"
+import type { Hypothesis } from "@/lib/schemas/hypothesis"
+import type { Validation } from "@/lib/schemas/validation"
 import { StatusBadge } from "@/components/StatusBadge"
 import { ValidationSummary } from "@/components/ValidationSummary"
 import { Pagination } from "@/components/Pagination"
@@ -29,9 +32,9 @@ export default async function ValidationQueuePage({
         {items.length === 0 && (
           <p className="text-sm text-slate-500">No runs awaiting human validation.</p>
         )}
-        {items.map(({ run, hypothesis, validations }) => {
-          const auto = validations.find((validation) => validation.kind === "auto")
-          const human = validations.find((validation) => validation.kind === "human")
+        {items.map(({ run, hypothesis, validations }: { run: Run; hypothesis?: Hypothesis; validations: Validation[] }) => {
+          const auto = validations.find((validation: Validation) => validation.kind === "auto")
+          const human = validations.find((validation: Validation) => validation.kind === "human")
           return (
             <article
               key={run._id}
