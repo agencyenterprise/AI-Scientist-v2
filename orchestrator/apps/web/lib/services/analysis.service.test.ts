@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeEach } from "vitest"
 
 const mockCreate = vi.fn()
 const mockGet = vi.fn()
@@ -14,11 +14,17 @@ vi.mock("../repos/runs.repo", () => ({
 }))
 
 describe("analysis.service", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it("generates and persists analysis", async () => {
     const { generatePaperAnalysis } = await import("./analysis.service")
+    const runId = "00000000-0000-0000-0000-000000000001"
+    const hypothesisId = "00000000-0000-0000-0000-000000000002"
     mockFindRun.mockResolvedValueOnce({
-      _id: "run",
-      hypothesisId: "hypo",
+      _id: runId,
+      hypothesisId: hypothesisId,
       status: "RUNNING",
       createdAt: new Date(),
       updatedAt: new Date()
@@ -28,7 +34,7 @@ describe("analysis.service", () => {
 
     const result = await generatePaperAnalysis(
       {
-        runId: "run",
+        runId: runId,
         paperId: "paper",
         paperContent: "A".repeat(200)
       },
@@ -62,21 +68,24 @@ describe("analysis.service", () => {
 
   it("returns cached analysis when it exists", async () => {
     const { generatePaperAnalysis } = await import("./analysis.service")
+    const runId = "00000000-0000-0000-0000-000000000001"
+    const hypothesisId = "00000000-0000-0000-0000-000000000002"
+    const analysisId = "00000000-0000-0000-0000-000000000003"
     mockFindRun.mockResolvedValue({
-      _id: "run",
-      hypothesisId: "hypo",
+      _id: runId,
+      hypothesisId: hypothesisId,
       status: "RUNNING",
       createdAt: new Date(),
       updatedAt: new Date()
     })
     mockGet.mockResolvedValueOnce({
-      _id: "analysis-id",
-      runId: "run"
+      _id: analysisId,
+      runId: runId
     })
 
     const existing = await generatePaperAnalysis(
       {
-        runId: "run",
+        runId: runId,
         paperId: "paper",
         paperContent: "A".repeat(200)
       },
@@ -86,7 +95,7 @@ describe("analysis.service", () => {
       } as never
     )
 
-    expect(existing).toEqual({ _id: "analysis-id", runId: "run" })
+    expect(existing).toEqual({ _id: analysisId, runId: runId })
     expect(mockCreate).not.toHaveBeenCalled()
   })
 })

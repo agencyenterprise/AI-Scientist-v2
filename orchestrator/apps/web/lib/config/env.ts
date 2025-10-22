@@ -53,10 +53,37 @@ export type Env = z.infer<typeof EnvSchema>
 
 let cachedEnv: Env | null = null
 
+const isBuildTime = process.env.NEXT_PHASE === "phase-production-build"
+
 export function getEnv(): Env {
   if (cachedEnv) {
     return cachedEnv
   }
+  
+  if (isBuildTime) {
+    return {
+      NODE_ENV: "production",
+      MONGODB_URI: "mongodb://localhost:27017",
+      MONGODB_DB: "build",
+      REDIS_URL: "redis://localhost:6379",
+      MINIO_ENDPOINT: "localhost",
+      MINIO_PORT: 9000,
+      MINIO_USE_SSL: false,
+      MINIO_ACCESS_KEY: "build",
+      MINIO_SECRET_KEY: "build",
+      MINIO_BUCKET: "build",
+      MINIO_REGION: "us-east-1",
+      MINIO_PUBLIC_BASE_URL: "http://localhost:9000",
+      POD_SEMAPHORE_KEY: "build",
+      MAX_POD_SLOTS: 4,
+      GPU_SEMAPHORE_KEY: undefined,
+      GPU_MAX_SLOTS: undefined,
+      OPENAI_API_KEY: undefined,
+      OPENAI_MODEL_QUANT: undefined,
+      OPENAI_MODEL_QUAL: undefined
+    } as Env
+  }
+  
   const parsed = EnvSchema.safeParse(process.env)
   if (!parsed.success) {
     throw new Error(`Invalid environment variables: ${parsed.error.message}`)
