@@ -73,7 +73,7 @@ function logChanges(prev: RunDetail | undefined, current: RunDetail) {
 }
 
 export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
-  const prevDataRef = useRef<RunDetail | undefined>(undefined)
+  const prevDataRef = useRef<RunDetail>()
 
   const isTerminal = TERMINAL_STATES.includes(initialData.run.status)
 
