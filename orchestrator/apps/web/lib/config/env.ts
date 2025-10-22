@@ -53,16 +53,16 @@ export type Env = z.infer<typeof EnvSchema>
 
 let cachedEnv: Env | null = null
 
-const isBuildTime = process.env.NEXT_PHASE === "phase-production-build"
-
 export function getEnv(): Env {
   if (cachedEnv) {
     return cachedEnv
   }
   
-  if (isBuildTime) {
+  const hasRequiredEnvVars = process.env.MONGODB_URI && process.env.REDIS_URL && process.env.MINIO_ENDPOINT
+  
+  if (!hasRequiredEnvVars) {
     return {
-      NODE_ENV: "production",
+      NODE_ENV: (process.env.NODE_ENV as "development" | "production" | "test") || "production",
       MONGODB_URI: "mongodb://localhost:27017",
       MONGODB_DB: "build",
       REDIS_URL: "redis://localhost:6379",
