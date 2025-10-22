@@ -15,6 +15,7 @@ AVAILABLE_VLMS = [
     "gpt-4o-2024-11-20",
     "gpt-4o-mini-2024-07-18",
     "o3-mini",
+    "gpt-5",
 ]
 
 
@@ -67,16 +68,29 @@ def make_llm_call(client, model, temperature, system_message, prompt):
 
 @track_token_usage
 def make_vlm_call(client, model, temperature, system_message, prompt):
-    if "gpt" in model:
-        return client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_message},
-                *prompt,
-            ],
-            temperature=temperature,
-            max_tokens=MAX_NUM_TOKENS,
-        )
+    if "gpt" in model or model == "gpt-5":
+        # GPT-5 uses max_completion_tokens instead of max_tokens
+        # and only supports temperature=1
+        if model == "gpt-5":
+            return client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    *prompt,
+                ],
+                temperature=1,  # GPT-5 only supports temperature=1
+                max_completion_tokens=MAX_NUM_TOKENS,
+            )
+        else:
+            return client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    *prompt,
+                ],
+                temperature=temperature,
+                max_tokens=MAX_NUM_TOKENS,
+            )
     else:
         raise ValueError(f"Model {model} not supported.")
 
@@ -163,6 +177,7 @@ def create_client(model: str) -> tuple[Any, str]:
         "gpt-4o-2024-11-20",
         "gpt-4o-mini-2024-07-18",
         "o3-mini",
+        "gpt-5",
     ]:
         print(f"Using OpenAI API with model {model}.")
         return openai.OpenAI(), model
@@ -242,6 +257,7 @@ def get_batch_responses_from_vlm(
         "gpt-4o-2024-11-20",
         "gpt-4o-mini-2024-07-18",
         "o3-mini",
+        "gpt-5",
     ]:
         # Convert single image path to list
         if isinstance(image_paths, str):
@@ -265,17 +281,31 @@ def get_batch_responses_from_vlm(
         new_msg_history = msg_history + [{"role": "user", "content": content}]
 
         # Get multiple responses
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_message},
-                *new_msg_history,
-            ],
-            temperature=temperature,
-            max_tokens=MAX_NUM_TOKENS,
-            n=n_responses,
-            seed=0,
-        )
+        # GPT-5 uses max_completion_tokens instead of max_tokens and only supports temperature=1
+        if model == "gpt-5":
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    *new_msg_history,
+                ],
+                temperature=1,  # GPT-5 only supports temperature=1
+                max_completion_tokens=MAX_NUM_TOKENS,
+                n=n_responses,
+                seed=0,
+            )
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    *new_msg_history,
+                ],
+                temperature=temperature,
+                max_tokens=MAX_NUM_TOKENS,
+                n=n_responses,
+                seed=0,
+            )
 
         # Extract content from all responses
         contents = [r.message.content for r in response.choices]

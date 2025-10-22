@@ -11,6 +11,9 @@ import openai
 MAX_NUM_TOKENS = 4096
 
 AVAILABLE_LLMS = [
+    # Newer generic aliases (ensure OpenAI supports them in your account)
+    "gpt-5",
+    "gpt-5-mini",
     "claude-3-5-sonnet-20240620",
     "claude-3-5-sonnet-20241022",
     # OpenAI models
@@ -19,10 +22,12 @@ AVAILABLE_LLMS = [
     "gpt-4o",
     "gpt-4o-2024-05-13",
     "gpt-4o-2024-08-06",
+    "gpt-4o-2024-11-20",
     "gpt-4.1",
     "gpt-4.1-2025-04-14",
     "gpt-4.1-mini",
     "gpt-4.1-mini-2025-04-14",
+    "gpt-5",
     "o1",
     "o1-2024-12-17",
     "o1-preview-2024-09-12",
@@ -79,7 +84,26 @@ def get_batch_responses_from_llm(
     if msg_history is None:
         msg_history = []
 
-    if "gpt" in model:
+    if model == "gpt-5":
+        # gpt-5 uses max_completion_tokens instead of max_tokens
+        new_msg_history = msg_history + [{"role": "user", "content": msg}]
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_message},
+                *new_msg_history,
+            ],
+            temperature=temperature,
+            max_completion_tokens=MAX_NUM_TOKENS,
+            n=n_responses,
+            stop=None,
+            seed=0,
+        )
+        content = [r.message.content for r in response.choices]
+        new_msg_history = [
+            new_msg_history + [{"role": "assistant", "content": c}] for c in content
+        ]
+    elif "gpt" in model:
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model,
@@ -178,7 +202,36 @@ def get_batch_responses_from_llm(
 
 @track_token_usage
 def make_llm_call(client, model, temperature, system_message, prompt):
-    if "gpt" in model:
+    if "gpt-5" in model:
+        # gpt-5 models only support temperature=1 and use max_completion_tokens
+        # Use 16K tokens for long-form generation (papers, writeups)
+        print(f"[DEBUG] Calling gpt-5 with {len(prompt)} messages")
+        print(f"[DEBUG] System message length: {len(system_message)} chars")
+        print(f"[DEBUG] User message length: {len(prompt[-1]['content']) if prompt else 0} chars")
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    *prompt,
+                ],
+                temperature=1.0,
+                max_completion_tokens=16000,  # Increased from 4096 for long-form output
+                n=1,
+                stop=None,
+                seed=0,
+            )
+            print(f"[DEBUG] gpt-5 response received")
+            print(f"[DEBUG] Response finish_reason: {response.choices[0].finish_reason}")
+            print(f"[DEBUG] Response content length: {len(response.choices[0].message.content) if response.choices[0].message.content else 0}")
+            if response.choices[0].finish_reason == "length":
+                print(f"[WARNING] gpt-5 hit token limit! Consider increasing max_completion_tokens further")
+            return response
+        except Exception as e:
+            print(f"[DEBUG] Exception in gpt-5 API call: {e}")
+            print(f"[DEBUG] Exception type: {type(e)}")
+            raise
+    elif "gpt" in model:
         return client.chat.completions.create(
             model=model,
             messages=[
@@ -263,6 +316,9 @@ def get_response_from_llm(
         ]
     elif "gpt" in model:
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
+        # gpt-5 models only support temperature=1 (like o1/o3)
+        if "gpt-5" in model:
+            temperature = 1.0
         response = make_llm_call(
             client,
             model,

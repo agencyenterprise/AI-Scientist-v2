@@ -994,16 +994,32 @@ def perform_writeup(
             plot_descriptions=plot_descriptions_str,
         )
 
-        response, msg_history = get_response_from_llm(
-            prompt=combined_prompt,
-            client=big_client,
-            model=big_client_model,
-            system_message=big_model_system_message,
-            print_debug=False,
-        )
+        try:
+            response, msg_history = get_response_from_llm(
+                prompt=combined_prompt,
+                client=big_client,
+                model=big_client_model,
+                system_message=big_model_system_message,
+                print_debug=False,
+            )
+        except Exception as e:
+            print(f"ERROR: Exception calling {big_client_model}: {e}")
+            print(f"Exception type: {type(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+
+        if not response or len(response) == 0:
+            print(f"ERROR: Empty response from {big_client_model}")
+            print("This likely means the model doesn't exist or your API key doesn't have access")
+            return False
 
         latex_code_match = re.search(r"```latex(.*?)```", response, re.DOTALL)
         if not latex_code_match:
+            print(f"ERROR: No LaTeX code block found in response from {big_client_model}")
+            print(f"Response length: {len(response)} chars")
+            print(f"Response preview (first 500 chars): {response[:500]}")
+            print(f"Response preview (last 500 chars): {response[-500:]}")
             return False
         updated_latex_code = latex_code_match.group(1).strip()
         with open(writeup_file, "w") as f:

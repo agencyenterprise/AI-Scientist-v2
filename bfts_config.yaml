@@ -23,11 +23,19 @@ exec:
 generate_report: True
 # LLM settings for final report from journal
 report:
-  model: gpt-4o-2024-11-20
+  model: gpt-5-mini
   temp: 1.0
 
 experiment:
   num_syn_datasets: 1
+
+# Hardware/Compute Resources Available
+compute:
+  gpu:
+    type: "L40S"
+    count: 3
+    vram_gb: 48
+  notes: "Each experiment runs on ONE L40 GPU (48GB VRAM). The 3 GPUs per pod run 3 seeds in parallel. Design experiments for a single powerful GPU - you can use larger models (up to ~7B params), bigger batch sizes, and more extensive training than on consumer hardware."
 
 debug:
   stage4: False
@@ -35,12 +43,12 @@ debug:
 # agent hyperparams
 agent:
   type: parallel
-  num_workers: 4
+  num_workers: 10
   stages:
-    stage1_max_iters: 20
-    stage2_max_iters: 12
-    stage3_max_iters: 12
-    stage4_max_iters: 18
+    stage1_max_iters: 14
+    stage2_max_iters: 8
+    stage3_max_iters: 8
+    stage4_max_iters: 14
   # how many improvement iterations to run
   steps: 5 # if stage-specific max_iters are not provided, the agent will use this value for all stages
   # whether to instruct the agent to use CV (set to 1 to disable)
@@ -54,23 +62,23 @@ agent:
 
   # LLM settings for coding
   code:
-    model: anthropic.claude-3-5-sonnet-20241022-v2:0
+    model: gpt-5
     temp: 1.0
     max_tokens: 12000
 
   # LLM settings for evaluating program output / tracebacks
   feedback:
-    model: gpt-4o-2024-11-20
+    model: gpt-5
     # gpt-4o
     temp: 0.5
     max_tokens: 8192
 
   vlm_feedback:
-    model: gpt-4o-2024-11-20
+    model: gpt-5
     temp: 0.5
     max_tokens: null
 
   search:
-    max_debug_depth: 3
-    debug_prob: 0.5
+    max_debug_depth: 5  # increased from 3 - try harder to debug
+    debug_prob: 0.7     # increased from 0.5 - debug more often
     num_drafts: 3

@@ -289,8 +289,20 @@ class MinimalAgent:
         random.shuffle(pkgs)
         pkg_str = ", ".join([f"`{p}`" for p in pkgs])
 
+        # Add GPU info if available in config
+        gpu_info = ""
+        if hasattr(self.cfg, "compute") and hasattr(self.cfg.compute, "gpu"):
+            gpu_type = self.cfg.compute.gpu.type
+            vram_gb = self.cfg.compute.gpu.vram_gb
+            gpu_info = f"\n\n**Available Hardware**: You have access to ONE {gpu_type} GPU with {vram_gb}GB VRAM. This is a powerful enterprise GPU that can handle:\n" \
+                      f"  - Large models (up to ~7B parameters for inference, ~3B for training)\n" \
+                      f"  - Large batch sizes (don't be conservative - use batch sizes of 32-128+)\n" \
+                      f"  - Extensive training (15-20+ epochs is fine)\n" \
+                      f"  - Multiple datasets with thousands of samples\n" \
+                      f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or even larger models if appropriate for your task, but prefer gpt-2-like models to not take so long to run."
+
         env_prompt = {
-            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow."
+            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow.{gpu_info}"
         }
         return env_prompt
 
@@ -1269,17 +1281,20 @@ class ParallelAgent:
         # Submit parallel jobs for different seeds
         seed_nodes = []
         futures = []
+        seed_process_ids = []  # Track process IDs for GPU release
         for seed in range(self.cfg.agent.multi_seed_eval.num_seeds):
             gpu_id = None
+            process_id = f"seed_{seed}_worker"
             if self.gpu_manager is not None:
                 try:
-                    process_id = f"seed_{seed}_worker"
                     gpu_id = self.gpu_manager.acquire_gpu(process_id)
                     logger.info(f"Assigned GPU {gpu_id} to seed {seed}")
+                    seed_process_ids.append(process_id)
                 except RuntimeError as e:
                     logger.warning(
                         f"Could not acquire GPU for seed {seed}: {e}. Running on CPU"
                     )
+                    seed_process_ids.append(None)
 
             # Add seed to node code
             node_data["code"] = (
@@ -1314,7 +1329,7 @@ class ParallelAgent:
                 )
             )
 
-        for future in futures:
+        for idx, future in enumerate(futures):
             try:
                 result_data = future.result(timeout=self.timeout)
                 result_node = Node.from_dict(result_data, self.journal)
@@ -1326,6 +1341,13 @@ class ParallelAgent:
                 print("Added result node to journal")
             except Exception as e:
                 logger.error(f"Error in multi-seed evaluation: {str(e)}")
+            finally:
+                # Release GPU after this seed completes
+                if self.gpu_manager is not None and idx < len(seed_process_ids):
+                    process_id = seed_process_ids[idx]
+                    if process_id is not None:
+                        self.gpu_manager.release_gpu(process_id)
+                        logger.info(f"Released GPU for {process_id}")
 
         return seed_nodes
 

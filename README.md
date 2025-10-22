@@ -48,11 +48,11 @@ conda create -n ai_scientist python=3.11
 conda activate ai_scientist
 
 # Install PyTorch with CUDA support (adjust pytorch-cuda version for your setup)
-conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
+conda install -y pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
 
 # Install PDF and LaTeX tools
-conda install anaconda::poppler
-conda install conda-forge::chktex
+conda install -y anaconda::poppler
+conda install -y conda-forge::chktex
 
 # Install Python package requirements
 pip install -r requirements.txt
