@@ -27,7 +27,9 @@ export function StageProgressPanel({ run }: StageProgressPanelProps) {
   const totalNodes = currentStage.totalNodes || 0
   
   const stageTiming = run.stageTiming?.[currentStage.name]
-  const elapsedS = stageTiming?.elapsed_s || 0
+  const now = Date.now()
+  const stageStartedAt = stageTiming?.startedAt ? new Date(stageTiming.startedAt).getTime() : (run.startedAt ? new Date(run.startedAt).getTime() : now)
+  const elapsedS = stageTiming?.elapsed_s || Math.floor((now - stageStartedAt) / 1000)
   const elapsedMin = Math.floor(elapsedS / 60)
   const elapsedSec = elapsedS % 60
   
