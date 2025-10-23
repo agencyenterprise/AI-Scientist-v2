@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { type Run } from "@/lib/schemas/run"
 import { STAGE_DESCRIPTIONS } from "@/lib/state/constants"
 
@@ -9,6 +10,14 @@ interface StageProgressPanelProps {
 
 export function StageProgressPanel({ run }: StageProgressPanelProps) {
   const currentStage = run.currentStage
+  const [now, setNow] = useState(Date.now())
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
   
   if (!currentStage?.name) {
     return (
@@ -27,7 +36,6 @@ export function StageProgressPanel({ run }: StageProgressPanelProps) {
   const totalNodes = currentStage.totalNodes || 0
   
   const stageTiming = run.stageTiming?.[currentStage.name]
-  const now = Date.now()
   const stageStartedAt = stageTiming?.startedAt ? new Date(stageTiming.startedAt).getTime() : (run.startedAt ? new Date(run.startedAt).getTime() : now)
   const elapsedS = stageTiming?.elapsed_s || Math.floor((now - stageStartedAt) / 1000)
   const elapsedMin = Math.floor(elapsedS / 60)

@@ -76,8 +76,6 @@ function logChanges(prev: RunDetail | undefined, current: RunDetail) {
 export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
   const prevDataRef = useRef<RunDetail | undefined>(undefined)
 
-  const isTerminal = TERMINAL_STATES.includes(initialData.run.status)
-
   const { data } = useQuery({
     queryKey: ["run", initialData.run._id],
     queryFn: async () => {
@@ -86,8 +84,12 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
       return res.json() as Promise<RunDetail>
     },
     initialData,
-    refetchInterval: isTerminal ? false : 5000,
-    refetchOnWindowFocus: !isTerminal
+    refetchInterval: (query) => {
+      const currentData = query.state.data as RunDetail | undefined
+      const isTerminal = currentData && TERMINAL_STATES.includes(currentData.run.status)
+      return isTerminal ? false : 5000
+    },
+    refetchOnWindowFocus: true
   })
 
   useEffect(() => {
@@ -100,6 +102,7 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
   const autoValidation = detail.validations.find((v) => v.kind === "auto")
   const humanValidation = detail.validations.find((v) => v.kind === "human")
   const canCancel = ["QUEUED", "SCHEDULED", "STARTING", "RUNNING"].includes(detail.run.status)
+  const isTerminal = TERMINAL_STATES.includes(detail.run.status)
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
@@ -108,7 +111,10 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
           <h1 className="text-2xl font-semibold text-slate-100">Run {detail.run._id}</h1>
           <StatusBadge status={detail.run.status} />
           {!isTerminal && (
-            <span className="text-xs text-slate-500">(polling every 5s)</span>
+            <span className="text-xs text-slate-500">
+              <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse mr-1.5"></span>
+              polling every 5s
+            </span>
           )}
         </div>
         <div className="text-sm text-slate-400">
