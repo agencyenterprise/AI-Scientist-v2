@@ -26,6 +26,7 @@ export function CreateHypothesisForm() {
       }
       setTitle("")
       setIdea("")
+      router.push("/")
       router.refresh()
     })
   }
