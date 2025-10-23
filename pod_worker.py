@@ -230,6 +230,31 @@ def fetch_next_experiment(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]
     return run
 
 
+def fetch_writeup_retry(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]:
+    db = mongo_client['ai-scientist']
+    runs_collection = db["runs"]
+    
+    run = runs_collection.find_one_and_update(
+        {
+            "pendingWriteupRetry": True,
+            "$or": [
+                {"writeupRetryClaimedBy": None},
+                {"writeupRetryClaimedBy": {"$exists": False}}
+            ]
+        },
+        {
+            "$set": {
+                "writeupRetryClaimedBy": pod_id,
+                "writeupRetryClaimedAt": datetime.utcnow()
+            }
+        },
+        sort=[("writeupRetryRequestedAt", 1)],
+        return_document=ReturnDocument.AFTER
+    )
+    
+    return run
+
+
 def get_gpu_info() -> Dict[str, Any]:
     try:
         import torch
@@ -432,9 +457,20 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         # Final progress for stage
         # This will be overridden by step_callback during execution
         
+        import yaml
+        config_path = os.path.join(os.path.dirname(__file__), "bfts_config.yaml")
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        plot_model = config.get("writeup", {}).get("plot_model", "gpt-5-mini")
+        small_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
+        big_model = config.get("writeup", {}).get("big_model", "gpt-5")
+        
+        print(f"✓ Using models from config: plot={plot_model}, small={small_model}, big={big_model}")
+        
         print("\n📊 Aggregating plots...")
         from ai_scientist.perform_plotting import aggregate_plots
-        aggregate_plots(base_folder=idea_dir, model="o3-mini-2025-01-31")
+        aggregate_plots(base_folder=idea_dir, model=plot_model)
         
         print("\n📄 Generating paper...")
         from ai_scientist.perform_icbinb_writeup import gather_citations, perform_writeup
@@ -444,16 +480,17 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         citations_text = gather_citations(
             idea_dir,
             num_cite_rounds=15,
-            small_model="gpt-4o-2024-11-20"
+            small_model=small_model
         )
         
         writeup_success = perform_writeup(
             base_folder=idea_dir,
-            big_model="o1-preview-2024-09-12",
+            big_model=big_model,
             page_limit=4,
             citations_text=citations_text
         )
         
+        pdf_files = []
         if writeup_success:
             pdf_files = [f for f in os.listdir(idea_dir) if f.endswith(".pdf")]
             if pdf_files:
@@ -463,7 +500,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
         
         print("\n🤖 Running auto-validation...")
-        event_emitter.validation_auto_started(run_id, "gpt-4o-2024-11-20")
+        review_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
+        event_emitter.validation_auto_started(run_id, review_model)
         
         from ai_scientist.perform_llm_review import perform_review, load_paper
         from ai_scientist.llm import create_client
@@ -471,7 +509,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         if pdf_files:
             pdf_path = os.path.join(idea_dir, pdf_files[0])
             paper_content = load_paper(pdf_path)
-            client, client_model = create_client("gpt-4o-2024-11-20")
+            client, client_model = create_client(review_model)
             review = perform_review(paper_content, client_model, client)
             
             event_emitter.validation_auto_completed(
@@ -580,6 +618,214 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 monitor_thread.join(timeout=5)
 
 
+def perform_writeup_retry(run: Dict[str, Any], mongo_client):
+    global CURRENT_RUN_ID, CURRENT_STAGE, EVENT_SEQ
+    
+    run_id = run["_id"]
+    CURRENT_RUN_ID = run_id
+    CURRENT_STAGE = "writeup_retry"
+    EVENT_SEQ = run.get("lastEventSeq", 0)
+    
+    print(f"\n{'='*60}")
+    print(f"📝 WRITEUP RETRY: {run_id}")
+    print(f"{'='*60}\n")
+    
+    db = mongo_client['ai-scientist']
+    runs_collection = db["runs"]
+    
+    try:
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "info",
+            "message": "🔄 Starting paper generation retry...",
+            "source": "writeup_retry"
+        })
+        
+        experiments_dir = Path("experiments")
+        matching_dirs = sorted([d for d in experiments_dir.iterdir() if run_id in d.name])
+        
+        if not matching_dirs:
+            raise FileNotFoundError(f"No experiment directory found for run {run_id}")
+        
+        exp_dir = matching_dirs[-1]
+        print(f"📂 Using experiment directory: {exp_dir}")
+        
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "info",
+            "message": f"📂 Found experiment directory: {exp_dir.name}",
+            "source": "writeup_retry"
+        })
+        
+        config_path = exp_dir / "bfts_config.yaml"
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        
+        with open(config_path, "r") as f:
+            import yaml
+            config = yaml.safe_load(f)
+        
+        writeup_config = config.get("writeup", {})
+        small_model = writeup_config.get("small_model", "gpt-4o-2024-05-13")
+        big_model = writeup_config.get("big_model", "o1-2024-12-17")
+        num_cite_rounds = writeup_config.get("num_cite_rounds", 20)
+        n_reflections = writeup_config.get("n_writeup_reflections", 3)
+        page_limit = writeup_config.get("page_limit", 4)
+        
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "info",
+            "message": "📊 Aggregating plots...",
+            "source": "writeup_retry"
+        })
+        
+        from ai_scientist.perform_plotting import aggregate_plots
+        aggregate_plots(str(exp_dir), small_model)
+        
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "info",
+            "message": "✍️  Generating paper writeup...",
+            "source": "writeup_retry"
+        })
+        
+        from ai_scientist.perform_icbinb_writeup import perform_writeup
+        success = perform_writeup(
+            base_folder=str(exp_dir),
+            citations_text=None,
+            no_writing=False,
+            num_cite_rounds=num_cite_rounds,
+            small_model=small_model,
+            big_model=big_model,
+            n_writeup_reflections=n_reflections,
+            page_limit=page_limit
+        )
+        
+        if not success:
+            raise Exception("Writeup generation failed")
+        
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "info",
+            "message": "✅ Paper generated successfully",
+            "source": "writeup_retry"
+        })
+        
+        pdf_files = list(exp_dir.glob("*.pdf"))
+        pdf_files = [f for f in pdf_files if "reflection" not in f.name.lower()]
+        
+        if pdf_files:
+            pdf_file = pdf_files[0]
+            print(f"📤 Uploading PDF: {pdf_file.name}")
+            
+            emit_event("ai.run.log", {
+                "run_id": run_id,
+                "level": "info",
+                "message": f"📤 Uploading paper artifact: {pdf_file.name}",
+                "source": "writeup_retry"
+            })
+            
+            try:
+                with open(pdf_file, "rb") as f:
+                    pdf_content = f.read()
+                
+                response = requests.post(
+                    f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
+                    json={
+                        "key": f"{run_id}/{pdf_file.name}",
+                        "contentType": "application/pdf",
+                        "category": "paper"
+                    },
+                    timeout=30
+                )
+                response.raise_for_status()
+                presign_data = response.json()
+                
+                upload_response = requests.put(
+                    presign_data["uploadUrl"],
+                    data=pdf_content,
+                    headers={"Content-Type": "application/pdf"},
+                    timeout=120
+                )
+                upload_response.raise_for_status()
+                
+                emit_event("ai.artifact_registered", {
+                    "run_id": run_id,
+                    "key": presign_data["key"],
+                    "uri": presign_data["publicUrl"],
+                    "category": "paper",
+                    "metadata": {
+                        "filename": pdf_file.name,
+                        "size": len(pdf_content)
+                    }
+                })
+                
+                print(f"✅ Paper uploaded successfully")
+                
+            except Exception as e:
+                print(f"⚠️  Failed to upload paper: {e}")
+                emit_event("ai.run.log", {
+                    "run_id": run_id,
+                    "level": "warn",
+                    "message": f"⚠️  Failed to upload paper: {str(e)}",
+                    "source": "writeup_retry"
+                })
+        
+        runs_collection.update_one(
+            {"_id": run_id},
+            {
+                "$set": {
+                    "pendingWriteupRetry": False,
+                    "writeupRetryCompletedAt": datetime.utcnow(),
+                    "updatedAt": datetime.utcnow()
+                },
+                "$unset": {
+                    "writeupRetryClaimedBy": "",
+                    "writeupRetryClaimedAt": ""
+                }
+            }
+        )
+        
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "info",
+            "message": "✨ Writeup retry completed successfully",
+            "source": "writeup_retry"
+        })
+        
+        emitter.flush()
+        print(f"\n✅ Writeup retry completed: {run_id}\n")
+        
+    except Exception as e:
+        print(f"\n❌ Writeup retry failed: {e}", file=sys.stderr)
+        traceback.print_exc()
+        
+        runs_collection.update_one(
+            {"_id": run_id},
+            {
+                "$set": {
+                    "pendingWriteupRetry": False,
+                    "writeupRetryFailedAt": datetime.utcnow(),
+                    "writeupRetryError": str(e),
+                    "updatedAt": datetime.utcnow()
+                },
+                "$unset": {
+                    "writeupRetryClaimedBy": "",
+                    "writeupRetryClaimedAt": ""
+                }
+            }
+        )
+        
+        emit_event("ai.run.log", {
+            "run_id": run_id,
+            "level": "error",
+            "message": f"❌ Writeup retry failed: {str(e)}",
+            "source": "writeup_retry"
+        })
+        
+        emitter.flush()
+
+
 def main():
     print(f"\n{'='*60}")
     print(f"🤖 AI Scientist Pod Worker")
@@ -601,7 +847,7 @@ def main():
         print(f"❌ Failed to connect to MongoDB: {e}", file=sys.stderr)
         sys.exit(1)
     
-    print("🔍 Polling for experiments...\n")
+    print("🔍 Polling for experiments and writeup retries...\n")
     
     while True:
         try:
@@ -610,7 +856,11 @@ def main():
             if run:
                 run_experiment_pipeline(run, mongo_client)
             else:
-                time.sleep(10)
+                writeup_retry = fetch_writeup_retry(mongo_client, POD_ID)
+                if writeup_retry:
+                    perform_writeup_retry(writeup_retry, mongo_client)
+                else:
+                    time.sleep(10)
                 
         except KeyboardInterrupt:
             print("\n🛑 Shutting down gracefully...")

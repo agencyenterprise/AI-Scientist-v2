@@ -26,6 +26,12 @@ report:
   model: gpt-5-mini
   temp: 1.0
 
+# LLM settings for paper writeup
+writeup:
+  big_model: gpt-5
+  small_model: gpt-5-mini
+  plot_model: gpt-5-mini
+
 experiment:
   num_syn_datasets: 1
 

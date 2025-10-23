@@ -121,7 +121,7 @@ class StageTransition:
 
 
 class AgentManager:
-    def __init__(self, task_desc: str, cfg: Any, workspace_dir: Path):
+    def __init__(self, task_desc: str, cfg: Any, workspace_dir: Path, event_callback=None):
         self.task_desc = json.loads(task_desc)
         for k in [
             "Title",
@@ -134,6 +134,7 @@ class AgentManager:
                 raise ValueError(f"Key {k} not found in task_desc")
         self.cfg = cfg
         self.workspace_dir = workspace_dir
+        self.event_callback = event_callback
         self.current_stage_number = 0
         self.stages: List[Stage] = []
         self.current_stage: Optional[Stage] = None
@@ -326,6 +327,7 @@ Your research idea:\n\n
             best_stage3_node=best_stage3_node,
             best_stage2_node=best_stage2_node,
             best_stage1_node=best_stage1_node,
+            event_callback=self.event_callback,
         )
 
     def _parse_vlm_feedback(self, node: Node) -> str:

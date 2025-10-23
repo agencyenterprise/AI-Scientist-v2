@@ -87,6 +87,7 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
         task_desc=task_desc,
         cfg=cfg,
         workspace_dir=Path(cfg.workspace_dir),
+        event_callback=emit_event,
     )
 
     prog = Progress(
@@ -147,17 +148,33 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
             # Save the run as before
             save_run(cfg, journal, stage_name=f"stage_{stage.name}")
             
-            # Emit detailed progress event (use ai.run.stage_progress)
+            # ALWAYS emit progress - show actual work being done
+            # Use total nodes as iteration count so progress shows even when all buggy
+            current_iteration = len(journal.nodes)
+            progress = min(current_iteration / stage.max_iterations, 1.0) if stage.max_iterations > 0 else 0
+            
             emit_event("ai.run.stage_progress", {
-                "stage": stage.name.split("_")[0] + "_" + stage.name.split("_")[1],  # Convert to Stage_1 format
-                "iteration": len(journal.good_nodes),
+                "stage": stage.name.split("_")[0] + "_" + stage.name.split("_")[1],
+                "iteration": current_iteration,  # Total nodes attempted
                 "max_iterations": stage.max_iterations,
-                "progress": len(journal.good_nodes) / stage.max_iterations if stage.max_iterations > 0 else 0,
+                "progress": progress,  # Based on total attempts, not just good ones
                 "total_nodes": len(journal.nodes),
                 "buggy_nodes": len(journal.buggy_nodes),
                 "good_nodes": len(journal.good_nodes),
                 "best_metric": str(best_node.metric) if best_node else None,
             })
+            
+            # Also emit a log event describing what's happening
+            if len(journal.good_nodes) == 0 and len(journal.buggy_nodes) > 0:
+                emit_event("ai.run.log", {
+                    "message": f"Debugging failed implementations ({len(journal.buggy_nodes)} buggy nodes, retrying...)",
+                    "level": "info"
+                })
+            elif len(journal.good_nodes) > 0:
+                emit_event("ai.run.log", {
+                    "message": f"Found {len(journal.good_nodes)} working implementation(s), continuing...",
+                    "level": "info"
+                })
             
             # Emit node completion if we have a latest node
             if latest_node_summary:

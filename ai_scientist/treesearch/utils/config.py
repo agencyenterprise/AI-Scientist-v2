@@ -84,6 +84,13 @@ class ExperimentConfig:
 
 
 @dataclass
+class WriteupConfig:
+    big_model: str
+    small_model: str
+    plot_model: str
+
+
+@dataclass
 class GPUConfig:
     type: str
     count: int
@@ -115,6 +122,7 @@ class Config(Hashable):
     exec: ExecConfig
     generate_report: bool
     report: StageConfig
+    writeup: Optional[WriteupConfig]
     agent: AgentConfig
     experiment: ExperimentConfig
     compute: Optional[ComputeConfig]

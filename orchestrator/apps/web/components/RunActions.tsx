@@ -37,7 +37,7 @@ export function RunActions({
   }
 
   const retryWriteup = () => {
-    if (!confirm("Retry paper generation for this run? Progress will appear in live logs below.")) return
+    if (!confirm("Retry paper generation for this run? A pod worker will pick it up and progress will appear in live logs below.")) return
     startTransition(async () => {
       setError(null)
       setSuccess(null)
@@ -54,7 +54,7 @@ export function RunActions({
       setTimeout(() => {
         setSuccess(null)
         router.refresh()
-      }, 3000)
+      }, 5000)
     })
   }
 

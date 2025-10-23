@@ -1208,7 +1208,7 @@ If you believe you are done with reflection, simply say: "I am done"."""
         # Get new reflection_page_info
         reflection_page_info = get_reflection_page_info(reflection_pdf, page_limit)
 
-        final_reflection_prompt = """{reflection_page_info}
+        final_reflection_prompt = f"""{reflection_page_info}
 USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
         reflection_response, msg_history = get_response_from_llm(
             prompt=final_reflection_prompt,
@@ -1249,8 +1249,17 @@ USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
                 compile_latex(latex_folder, reflection_pdf)
             else:
                 print(f"No changes in reflection page step.")
+        else:
+            print(f"ERROR: No valid LaTeX code block found in final reflection")
+            print(f"Response length: {len(reflection_response)} chars")
+            print(f"Response preview: {reflection_response[:500] if len(reflection_response) > 0 else 'Empty'}")
+            return False
 
-        return osp.exists(reflection_pdf)
+        pdf_exists = osp.exists(reflection_pdf)
+        if not pdf_exists:
+            print(f"ERROR: Final PDF not found at {reflection_pdf}")
+            print("LaTeX compilation may have failed - check latex folder for errors")
+        return pdf_exists
 
     except Exception:
         print("EXCEPTION in perform_writeup:")
