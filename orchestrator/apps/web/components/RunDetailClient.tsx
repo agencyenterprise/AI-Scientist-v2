@@ -21,6 +21,7 @@ import { ErrorDisplay } from "@/components/ErrorDisplay"
 import { StageProgressPanel } from "@/components/StageProgressPanel"
 import { StageTimingView } from "@/components/StageTimingView"
 import { LiveLogViewer } from "@/components/LiveLogViewer"
+import { PlotGallery } from "@/components/PlotGallery"
 
 type RunDetail = {
   run: Run
@@ -185,6 +186,10 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
             </div>
           )}
         </div>
+      </section>
+
+      <section>
+        <PlotGallery runId={detail.run._id} />
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">

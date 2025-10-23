@@ -380,20 +380,32 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         config_path = "bfts_config.yaml"
         idea_config_path = edit_bfts_config_file(config_path, idea_dir, idea_path_json)
         
+        from experiment_monitor import ExperimentMonitor
+        import threading
+        
+        exp_monitor = ExperimentMonitor(idea_dir, run_id, emit_event)
+        monitor_stop = threading.Event()
+        
+        def monitor_loop():
+            while not monitor_stop.is_set():
+                try:
+                    exp_monitor.scan_for_updates()
+                    for plot_file in exp_monitor.uploaded_plots:
+                        full_path = exp_monitor.exp_dir / plot_file
+                        if full_path.exists() and plot_file not in exp_monitor.seen_files:
+                            exp_monitor.seen_files.add(plot_file)
+                            upload_artifact(run_id, str(full_path), "plot")
+                except Exception as e:
+                    print(f"Monitor error: {e}")
+                time.sleep(5)
+        
+        monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        monitor_thread.start()
+        
         def experiment_event_callback(event_type: str, data: dict):
             data["run_id"] = run_id
             emit_event(event_type, data)
             emitter.flush()
-            
-            if event_type == "ai.experiment.node_completed":
-                try:
-                    plots_dir = Path(idea_dir) / "plots"
-                    if plots_dir.exists():
-                        for plot_file in plots_dir.glob("*.png"):
-                            if plot_file.stat().st_mtime > (datetime.utcnow().timestamp() - 300):
-                                upload_artifact(run_id, str(plot_file), "plot")
-                except Exception as e:
-                    print(f"Warning: Failed to upload plots: {e}")
         
         for stage in ["Stage_1", "Stage_2", "Stage_3", "Stage_4"]:
             with StageContext(stage, run_id):
@@ -477,6 +489,9 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         
         emitter.flush()
         
+        monitor_stop.set()
+        monitor_thread.join(timeout=10)
+        
         print("\n📦 Archiving experiment artifacts to MinIO...")
         try:
             import tarfile
@@ -556,6 +571,11 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             "retryable": retry_count < max_retries
         })
         emitter.flush()
+        
+        if 'monitor_stop' in locals():
+            monitor_stop.set()
+            if 'monitor_thread' in locals():
+                monitor_thread.join(timeout=5)
 
 
 def main():

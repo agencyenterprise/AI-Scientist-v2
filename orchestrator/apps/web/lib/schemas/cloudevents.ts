@@ -67,7 +67,13 @@ export const StageProgressDataZ = z.object({
   run_id: z.string(),
   stage: z.enum(STAGES),
   progress: z.number().min(0).max(1),
-  eta_s: z.number().optional()
+  eta_s: z.number().optional(),
+  iteration: z.number().int().optional(),
+  max_iterations: z.number().int().optional(),
+  good_nodes: z.number().int().optional(),
+  buggy_nodes: z.number().int().optional(),
+  total_nodes: z.number().int().optional(),
+  best_metric: z.string().optional()
 })
 
 export const StageMetricDataZ = z.object({
