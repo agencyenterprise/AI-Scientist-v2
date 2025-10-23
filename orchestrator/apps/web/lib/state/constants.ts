@@ -6,6 +6,7 @@ export const RUN_STATUSES = [
   "AUTO_VALIDATING",
   "AWAITING_HUMAN",
   "HUMAN_VALIDATED",
+  "COMPLETED",
   "FAILED",
   "CANCELED"
 ] as const
