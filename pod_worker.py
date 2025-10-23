@@ -311,6 +311,16 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
     print(f"🚀 Starting experiment: {run_id}")
     print(f"{'='*60}\n")
     
+    # Load .env to ensure API keys are available
+    if os.path.exists('.env'):
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+        print("✓ Loaded environment variables from .env")
+    
+    # Verify critical env vars
+    if not os.environ.get('OPENAI_API_KEY'):
+        raise ValueError("OPENAI_API_KEY not set - check .env file")
+    
     try:
         db = mongo_client['ai-scientist']
         runs_collection = db["runs"]
@@ -505,7 +515,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         runs_collection = db["runs"]
         
         retry_count = run.get("retryCount", 0)
-        max_retries = 3
+        max_retries = 0  # NO AUTO-RETRY - Stop and wait for human intervention
         
         if retry_count < max_retries:
             runs_collection.update_one(
@@ -527,9 +537,15 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         else:
             runs_collection.update_one(
                 {"_id": run_id},
-                {"$set": {"status": "FAILED"}}
+                {"$set": {
+                    "status": "FAILED",
+                    "failedAt": datetime.utcnow(),
+                    "errorMessage": str(e)[:500],
+                    "errorType": type(e).__name__
+                }}
             )
-            print(f"❌ Run failed permanently after {max_retries} retries")
+            print(f"❌ Run FAILED - requires human intervention")
+            print(f"   Error: {type(e).__name__}: {str(e)[:200]}")
         
         emit_event("ai.run.failed", {
             "run_id": run_id,
