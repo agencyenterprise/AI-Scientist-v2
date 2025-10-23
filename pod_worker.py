@@ -486,6 +486,10 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             {"$set": {"status": "COMPLETED", "completedAt": datetime.utcnow()}}
         )
         
+        # Calculate total experiment duration
+        total_duration_s = int(time.time() - (run.get('startedAt').timestamp() if run.get('startedAt') else time.time()))
+        event_emitter.run_completed(run_id, total_duration_s)
+        
         emitter.flush()
         
         monitor_stop.set()

@@ -34,10 +34,8 @@ def db():
     
     yield database
     
-    # Cleanup
-    database['runs'].delete_many({"createdBy": "integration_test"})
-    database['events'].delete_many({"source": {"$regex": "^runpod://pod/test-"}})
-    database['hypotheses'].delete_many({"createdBy": "integration_test"})
+    # DON'T cleanup - keep for inspection
+    print("\n📝 Test data preserved in MongoDB")
     client.close()
 
 @pytest.fixture

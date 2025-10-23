@@ -68,6 +68,9 @@ async function handleEventByType(
     case "ai.run.heartbeat":
       await handleRunHeartbeat(runId, event, eventSeq)
       break
+    case "ai.run.completed":
+      await handleRunCompleted(runId, event, eventSeq)
+      break
     case "ai.run.failed":
       await handleRunFailed(runId, event, eventSeq)
       break
@@ -127,6 +130,17 @@ async function handleRunHeartbeat(
 ): Promise<void> {
   await updateRun(runId, {
     lastHeartbeat: new Date(event.time)
+  })
+}
+
+async function handleRunCompleted(
+  runId: string,
+  event: CloudEventsEnvelope,
+  eventSeq: number | undefined
+): Promise<void> {
+  await transitionRunStatus(runId, "COMPLETED", eventSeq)
+  await updateRun(runId, {
+    completedAt: new Date(event.time)
   })
 }
 
