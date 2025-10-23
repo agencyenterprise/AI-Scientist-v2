@@ -4,11 +4,11 @@ import { Client } from "minio"
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ key: string }> }
+  { params }: { params: Promise<{ key: string[] }> }
 ) {
   try {
     const { key } = await params
-    const decodedKey = decodeURIComponent(key)
+    const decodedKey = key.map(decodeURIComponent).join('/')
     
     const env = getEnv()
     const minioClient = new Client({

@@ -5,6 +5,7 @@ import subprocess
 import os
 from queue import Queue
 import logging
+import multiprocessing
 import humanize
 from .backend import FunctionSpec, compile_prompt_to_md, query
 from .interpreter import ExecutionResult
@@ -1192,7 +1193,8 @@ class ParallelAgent:
             logger.info(f"Limiting workers to {self.num_workers} to match GPU count")
 
         self.timeout = self.cfg.exec.timeout
-        self.executor = ProcessPoolExecutor(max_workers=self.num_workers)
+        mp_context = multiprocessing.get_context('spawn')
+        self.executor = ProcessPoolExecutor(max_workers=self.num_workers, mp_context=mp_context)
         self._is_shutdown = False
         # Define the metric once at initialization
         self.evaluation_metrics = self._define_global_metrics()
