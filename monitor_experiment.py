@@ -91,12 +91,18 @@ class EventMonitor:
                 # Estimate remaining time
                 eta_s = int(elapsed_s / prog_val - elapsed_s) if prog_val > 0.01 else None
                 
-                # Emit progress event with ETA
+                # Emit detailed progress event
                 self.emit_event("ai.run.stage_progress", {
                     "run_id": self.run_id,
                     "stage": main_stage,
                     "progress": prog_val,
-                    "eta_s": eta_s
+                    "eta_s": eta_s,
+                    "iteration": good,
+                    "max_iterations": max_iters,
+                    "good_nodes": good,
+                    "buggy_nodes": progress.get("buggy_nodes", 0),
+                    "total_nodes": total,
+                    "best_metric": progress.get("best_metric")
                 })
                 
                 # Emit log event with details including time

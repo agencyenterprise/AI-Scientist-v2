@@ -95,6 +95,7 @@ async function handleRunStarted(
       instanceType: data.gpu,
       region: data.region
     },
+    startedAt: new Date(event.time),
     lastHeartbeat: new Date(event.time)
   })
 }
@@ -114,7 +115,13 @@ async function handleRunFailed(
   event: CloudEventsEnvelope,
   eventSeq: number | undefined
 ): Promise<void> {
+  const data = event.data
   await transitionRunStatus(runId, "FAILED", eventSeq)
+  await updateRun(runId, {
+    failedAt: new Date(event.time),
+    errorType: data.code,
+    errorMessage: data.message
+  })
 }
 
 async function handleRunCanceled(
@@ -158,12 +165,22 @@ async function handleStageProgress(
   await updateStage(`${runId}-${data.stage}`, {
     progress: data.progress
   })
-  await updateRun(runId, {
+  
+  const updateData: any = {
     currentStage: {
       name: data.stage,
-      progress: data.progress
-    }
-  })
+      progress: data.progress,
+      iteration: data.iteration,
+      maxIterations: data.max_iterations,
+      goodNodes: data.good_nodes,
+      buggyNodes: data.buggy_nodes,
+      totalNodes: data.total_nodes,
+      bestMetric: data.best_metric
+    },
+    updatedAt: new Date(event.time)
+  }
+  
+  await updateRun(runId, updateData)
 }
 
 async function handleStageMetric(
@@ -190,6 +207,14 @@ async function handleStageCompleted(
     completedAt: new Date(event.time),
     progress: 1
   })
+  
+  const run = await findRunById(runId)
+  if (run && run.stageTiming) {
+    await updateRun(runId, {
+      [`stageTiming.${data.stage}.duration_s`]: data.duration_s,
+      [`stageTiming.${data.stage}.completedAt`]: new Date(event.time)
+    })
+  }
 }
 
 async function handleValidationAutoStarted(

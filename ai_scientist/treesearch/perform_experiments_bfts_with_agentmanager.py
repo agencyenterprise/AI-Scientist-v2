@@ -147,12 +147,12 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
             # Save the run as before
             save_run(cfg, journal, stage_name=f"stage_{stage.name}")
             
-            # Emit progress event
-            emit_event("ai.experiment.progress", {
-                "stage": stage.name,
-                "iteration": len(journal),
+            # Emit detailed progress event (use ai.run.stage_progress)
+            emit_event("ai.run.stage_progress", {
+                "stage": stage.name.split("_")[0] + "_" + stage.name.split("_")[1],  # Convert to Stage_1 format
+                "iteration": len(journal.good_nodes),
                 "max_iterations": stage.max_iterations,
-                "progress": len(journal) / stage.max_iterations if stage.max_iterations > 0 else 0,
+                "progress": len(journal.good_nodes) / stage.max_iterations if stage.max_iterations > 0 else 0,
                 "total_nodes": len(journal.nodes),
                 "buggy_nodes": len(journal.buggy_nodes),
                 "good_nodes": len(journal.good_nodes),

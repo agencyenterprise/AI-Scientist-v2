@@ -65,7 +65,7 @@ export function RunsPageClient({
   hypothesisId?: string
   page: number
 }) {
-  const prevDataRef = useRef<RunsPageData>()
+  const prevDataRef = useRef<RunsPageData | undefined>(undefined)
 
   const { data } = useQuery({
     queryKey: ["runs", status, hypothesisId, page],

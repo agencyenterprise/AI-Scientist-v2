@@ -33,7 +33,25 @@ def connect_mongodb():
     try:
         client.admin.command("ping")
         print("✓ Connected to MongoDB\n")
-        return client.get_database()
+        
+        db_name = os.environ.get("MONGODB_DATABASE")
+        
+        if not db_name:
+            if "/" in MONGODB_URL:
+                parts = [p for p in MONGODB_URL.split("/") if p]
+                if parts:
+                    extracted = parts[-1].split("?")[0]
+                    if extracted and not extracted.startswith("mongodb"):
+                        db_name = extracted
+        
+        if not db_name:
+            db_name = "ai_scientist"
+            print(f"⚠️  No database name in URL, using default: {db_name}")
+            print(f"   Set explicitly with: export MONGODB_DATABASE='your_db_name'\n")
+        
+        print(f"Using database: {db_name}\n")
+        
+        return client[db_name]
     except Exception as e:
         print(f"❌ Failed to connect to MongoDB: {e}", file=sys.stderr)
         sys.exit(1)

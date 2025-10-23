@@ -1,46 +1,39 @@
 import { NextRequest, NextResponse } from "next/server"
-import { z } from "zod"
 import { listEvents } from "@/lib/repos/events.repo"
-import { isHttpError, toJsonResponse } from "@/lib/http/errors"
 
-export const runtime = "nodejs"
-
-const QuerySchema = z.object({
-  page: z.coerce.number().min(1).default(1),
-  pageSize: z.coerce.number().min(1).max(200).default(100)
-})
-
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params
-    const searchParams = Object.fromEntries(new URL(req.url).searchParams)
-    const parsed = QuerySchema.safeParse(searchParams)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { message: "Invalid query", issues: parsed.error.issues },
-        { status: 400 }
-      )
+    const { id: runId } = await params
+    const url = new URL(req.url)
+    
+    const type = url.searchParams.get("type")
+    const level = url.searchParams.get("level")
+    const page = parseInt(url.searchParams.get("page") || "1")
+    const pageSize = parseInt(url.searchParams.get("pageSize") || "100")
+    
+    const { items, total } = await listEvents(runId, page, pageSize)
+    
+    let filtered = items
+    if (type) {
+      filtered = filtered.filter(e => e.type === type)
     }
-    const { items, total } = await listEvents(
-      id,
-      parsed.data.page,
-      parsed.data.pageSize
-    )
-    return NextResponse.json({ items, total })
+    if (level) {
+      filtered = filtered.filter(e => e.data?.level === level)
+    }
+    
+    return NextResponse.json({
+      items: filtered,
+      total: filtered.length,
+      page,
+      pageSize
+    })
   } catch (error) {
-    return handleError(error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
   }
-}
-
-function handleError(error: unknown) {
-  if (error instanceof Response) {
-    return error
-  }
-  if (isHttpError(error)) {
-    return toJsonResponse(error)
-  }
-  return new Response(JSON.stringify({ message: "Internal Server Error" }), {
-    status: 500,
-    headers: { "content-type": "application/json" }
-  })
 }

@@ -5,6 +5,10 @@ import { useEffect, useRef } from "react"
 import { STAGES, type StageName, type RunStatus } from "@/lib/state/constants"
 import type { Validation } from "@/lib/schemas/validation"
 import type { Stage } from "@/lib/schemas/stage"
+import type { Artifact } from "@/lib/schemas/artifact"
+import type { Run } from "@/lib/schemas/run"
+import type { Hypothesis } from "@/lib/schemas/hypothesis"
+import type { PaperAnalysis } from "@/lib/schemas/analysis"
 import { StageProgress } from "@/components/StageProgress"
 import { StatusBadge } from "@/components/StatusBadge"
 import { RunEventsFeed } from "@/components/RunEventsFeed"
@@ -13,22 +17,18 @@ import { ValidationSummary } from "@/components/ValidationSummary"
 import { HumanValidationForm } from "@/components/HumanValidationForm"
 import { RunActions } from "@/components/RunActions"
 import { PaperAnalysisPanel } from "@/components/PaperAnalysisPanel"
+import { ErrorDisplay } from "@/components/ErrorDisplay"
+import { StageProgressPanel } from "@/components/StageProgressPanel"
+import { StageTimingView } from "@/components/StageTimingView"
+import { LiveLogViewer } from "@/components/LiveLogViewer"
 
 type RunDetail = {
-  run: {
-    _id: string
-    hypothesisId: string
-    status: RunStatus
-    createdAt: Date
-    updatedAt: Date
-    pod?: { id?: string; instanceType?: string }
-    currentStage?: { name?: StageName; progress?: number }
-  }
+  run: Run
   stages: Stage[]
   validations: Validation[]
-  artifacts: Array<{ _id: string; runId: string; key: string; kind: string }>
-  hypothesis?: { title: string }
-  analysis?: unknown
+  artifacts: Artifact[]
+  hypothesis?: Hypothesis
+  analysis?: PaperAnalysis | null
 }
 
 const TERMINAL_STATES: RunStatus[] = ["HUMAN_VALIDATED", "FAILED", "CANCELED"]
@@ -73,7 +73,7 @@ function logChanges(prev: RunDetail | undefined, current: RunDetail) {
 }
 
 export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
-  const prevDataRef = useRef<RunDetail>()
+  const prevDataRef = useRef<RunDetail | undefined>(undefined)
 
   const isTerminal = TERMINAL_STATES.includes(initialData.run.status)
 
@@ -116,6 +116,15 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
         <RunActions runId={detail.run._id} canCancel={canCancel} />
       </header>
 
+      <ErrorDisplay run={detail.run} />
+      
+      {detail.run.status === "RUNNING" && (
+        <section className="grid gap-6 md:grid-cols-2">
+          <StageProgressPanel run={detail.run} />
+          <StageTimingView run={detail.run} />
+        </section>
+      )}
+
       <section className="grid gap-6 md:grid-cols-[2fr,1fr]">
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
           <h2 className="text-sm font-semibold text-slate-200">Pipeline Stages</h2>
@@ -135,10 +144,22 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
                 <dt>Updated</dt>
                 <dd>{new Date(detail.run.updatedAt).toLocaleString()}</dd>
               </div>
+              {detail.run.startedAt && (
+                <div className="flex justify-between">
+                  <dt>Started</dt>
+                  <dd>{new Date(detail.run.startedAt).toLocaleString()}</dd>
+                </div>
+              )}
+              {detail.run.completedAt && (
+                <div className="flex justify-between">
+                  <dt>Completed</dt>
+                  <dd>{new Date(detail.run.completedAt).toLocaleString()}</dd>
+                </div>
+              )}
               {detail.run.pod?.id && (
                 <div className="flex justify-between">
                   <dt>Pod</dt>
-                  <dd>{detail.run.pod.id}</dd>
+                  <dd className="font-mono text-xs">{detail.run.pod.id.slice(0, 12)}</dd>
                 </div>
               )}
               {detail.run.pod?.instanceType && (
@@ -167,16 +188,20 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
-          <h2 className="text-sm font-semibold text-slate-200">Events</h2>
-          <div className="mt-4">
-            <RunEventsFeed runId={detail.run._id} />
-          </div>
-        </div>
+        <LiveLogViewer runId={detail.run._id} />
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
           <h2 className="text-sm font-semibold text-slate-200">Artifacts</h2>
           <div className="mt-4">
             <ArtifactList runId={detail.run._id} artifacts={detail.artifacts} />
+          </div>
+        </div>
+      </section>
+      
+      <section>
+        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
+          <h2 className="text-sm font-semibold text-slate-200">All Events</h2>
+          <div className="mt-4">
+            <RunEventsFeed runId={detail.run._id} />
           </div>
         </div>
       </section>
