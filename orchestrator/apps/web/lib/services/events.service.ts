@@ -258,16 +258,17 @@ async function handleValidationAutoCompleted(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
+  const { randomUUID } = await import("node:crypto")
   
   await createValidation({
-    _id: `${runId}-auto-${Date.now()}`,
+    _id: randomUUID(),
     runId,
     kind: "auto",
     verdict: data.verdict as "pass" | "fail",
     rubric: data.scores as Record<string, number> | undefined,
     notes: data.notes || "",
     createdAt: new Date(event.time),
-    createdBy: data.model || "auto"
+    createdBy: "auto"
   })
 
   await transitionRunStatus(runId, "AWAITING_HUMAN", eventSeq)
@@ -279,8 +280,10 @@ async function handleArtifactRegistered(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
+  const { randomUUID } = await import("node:crypto")
+  
   await createArtifact({
-    _id: `${runId}-${data.kind}-${Date.now()}`,
+    _id: randomUUID(),
     runId,
     key: data.key,
     uri: data.key,
