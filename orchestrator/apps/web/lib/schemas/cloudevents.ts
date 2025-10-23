@@ -138,22 +138,82 @@ export const ArtifactFailedDataZ = z.object({
   message: z.string()
 })
 
+export const ArtifactDetectedDataZ = z.object({
+  run_id: z.string(),
+  path: z.string(),
+  type: z.string(),
+  size_bytes: z.number().int()
+})
+
+export const NodeCreatedDataZ = z.object({
+  run_id: z.string(),
+  stage: z.enum(STAGES),
+  node_id: z.string(),
+  parent_id: z.string().optional()
+})
+
+export const NodeCodeGeneratedDataZ = z.object({
+  run_id: z.string(),
+  stage: z.enum(STAGES),
+  node_id: z.string(),
+  code_size_bytes: z.number().int()
+})
+
+export const NodeExecutingDataZ = z.object({
+  run_id: z.string(),
+  stage: z.enum(STAGES),
+  node_id: z.string()
+})
+
+export const NodeCompletedDataZ = z.object({
+  run_id: z.string(),
+  stage: z.enum(STAGES),
+  node_id: z.string(),
+  is_buggy: z.boolean(),
+  metric: z.string().optional(),
+  exec_time_s: z.number()
+})
+
+export const NodeSelectedBestDataZ = z.object({
+  run_id: z.string(),
+  stage: z.enum(STAGES),
+  node_id: z.string(),
+  metric: z.string()
+})
+
+export const RunCompletedDataZ = z.object({
+  run_id: z.string(),
+  total_duration_s: z.number().int()
+})
+
+export const PaperStartedDataZ = z.object({
+  run_id: z.string()
+})
+
 export const EVENT_TYPE_DATA_SCHEMAS = {
   "ai.run.enqueued": z.object({ run_id: z.string(), hypothesis_id: z.string(), priority: z.string().optional() }),
   "ai.run.started": RunStartedDataZ,
   "ai.run.heartbeat": RunHeartbeatDataZ,
   "ai.run.status_changed": RunStatusChangedDataZ,
+  "ai.run.completed": RunCompletedDataZ,
   "ai.run.failed": RunFailedDataZ,
   "ai.run.canceled": RunCanceledDataZ,
   "ai.run.stage_started": StageStartedDataZ,
   "ai.run.stage_progress": StageProgressDataZ,
   "ai.run.stage_metric": StageMetricDataZ,
   "ai.run.stage_completed": StageCompletedDataZ,
+  "ai.node.created": NodeCreatedDataZ,
+  "ai.node.code_generated": NodeCodeGeneratedDataZ,
+  "ai.node.executing": NodeExecutingDataZ,
+  "ai.node.completed": NodeCompletedDataZ,
+  "ai.node.selected_best": NodeSelectedBestDataZ,
   "ai.ideation.generated": IdeationGeneratedDataZ,
+  "ai.paper.started": PaperStartedDataZ,
   "ai.paper.generated": PaperGeneratedDataZ,
   "ai.validation.auto_started": ValidationAutoStartedDataZ,
   "ai.validation.auto_completed": ValidationAutoCompletedDataZ,
   "ai.run.log": RunLogDataZ,
+  "ai.artifact.detected": ArtifactDetectedDataZ,
   "ai.artifact.registered": ArtifactRegisteredDataZ,
   "ai.artifact.failed": ArtifactFailedDataZ
 } as const

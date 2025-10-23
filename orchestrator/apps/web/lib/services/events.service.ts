@@ -139,8 +139,10 @@ async function handleStageStarted(
 ): Promise<void> {
   const data = event.data
   const stageIndex = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"].indexOf(data.stage)
+  const { randomUUID } = await import("node:crypto")
+  
   await createStage({
-    _id: `${runId}-${data.stage}`,
+    _id: randomUUID(),
     runId,
     index: stageIndex,
     name: data.stage,
@@ -162,9 +164,13 @@ async function handleStageProgress(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
-  await updateStage(`${runId}-${data.stage}`, {
-    progress: data.progress
-  })
+  
+  // Find stage by runId and name instead of composite _id
+  const db = await import("../db/mongo").then(m => m.getDb())
+  await db.collection("stages").updateOne(
+    { runId, name: data.stage },
+    { $set: { progress: data.progress, updatedAt: new Date(event.time) } }
+  )
   
   const updateData: any = {
     currentStage: {
@@ -202,11 +208,12 @@ async function handleStageCompleted(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
-  await updateStage(`${runId}-${data.stage}`, {
-    status: "COMPLETED",
-    completedAt: new Date(event.time),
-    progress: 1
-  })
+  
+  const db = await import("../db/mongo").then(m => m.getDb())
+  await db.collection("stages").updateOne(
+    { runId, name: data.stage },
+    { $set: { status: "COMPLETED", completedAt: new Date(event.time), progress: 1 } }
+  )
   
   const run = await findRunById(runId)
   if (run && run.stageTiming) {

@@ -12,13 +12,16 @@ from typing import Optional, Dict, Any
 from pymongo import MongoClient, ReturnDocument
 from ulid import ULID
 
+from event_emitter import CloudEventEmitter
+
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "https://ai-scientist-v2-production.up.railway.app")
 MONGODB_URL = os.environ.get("MONGODB_URL", "")
 POD_ID = os.environ.get("RUNPOD_POD_ID", socket.gethostname())
 
 CURRENT_RUN_ID: Optional[str] = None
 CURRENT_STAGE: Optional[str] = None
-EVENT_SEQ = 0
+
+event_emitter = CloudEventEmitter(CONTROL_PLANE_URL, POD_ID)
 
 
 class EventEmitter:
@@ -135,11 +138,11 @@ class StageContext:
         CURRENT_RUN_ID = self.run_id
         self.start_time = time.time()
         
-        emit_event("ai.run.stage_started", {
-            "run_id": self.run_id,
-            "stage": self.stage,
-            "desc": get_stage_description(self.stage)
-        })
+        event_emitter.stage_started(
+            self.run_id,
+            self.stage,
+            get_stage_description(self.stage)
+        )
         return self
     
     def __exit__(self, exc_type, exc_value, exc_traceback):
@@ -169,11 +172,11 @@ class StageContext:
         except:
             pass
         
-        emit_event("ai.run.stage_completed", {
-            "run_id": self.run_id,
-            "stage": self.stage,
-            "duration_s": duration_s
-        })
+        event_emitter.stage_completed(
+            self.run_id,
+            self.stage,
+            int(duration_s)
+        )
         return False
 
 
@@ -262,23 +265,19 @@ def upload_artifact(run_id: str, file_path: str, kind: str) -> bool:
         
         sha256 = hashlib.sha256(file_bytes).hexdigest()
         
-        emit_event("ai.artifact.registered", {
-            "run_id": run_id,
-            "key": f"runs/{run_id}/{filename}",
-            "bytes": len(file_bytes),
-            "sha256": sha256,
-            "content_type": content_type,
-            "kind": kind
-        })
+        event_emitter.artifact_registered(
+            run_id,
+            f"runs/{run_id}/{filename}",
+            len(file_bytes),
+            sha256,
+            content_type,
+            kind
+        )
         
         return True
     except Exception as e:
-        emit_event("ai.artifact.failed", {
-            "run_id": run_id,
-            "key": f"runs/{run_id}/{os.path.basename(file_path)}",
-            "code": type(e).__name__,
-            "message": str(e)
-        })
+        # Artifact failed event
+        print(f"❌ Artifact upload failed: {e}")
         return False
 
 
@@ -340,13 +339,13 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             {"$set": {"status": "RUNNING", "startedAt": datetime.utcnow()}}
         )
         
-        emit_event("ai.run.started", {
-            "run_id": run_id,
-            "pod_id": POD_ID,
-            "gpu": get_gpu_info().get("gpu_name", "unknown"),
-            "region": get_gpu_info().get("region", "unknown"),
-            "image": "sakana:latest"
-        })
+        gpu_info = get_gpu_info()
+        event_emitter.run_started(
+            run_id, 
+            POD_ID,
+            gpu_info.get("gpu_name", "unknown"),
+            gpu_info.get("region", "unknown")
+        )
         
         hypotheses_collection = db["hypotheses"]
         hypothesis = hypotheses_collection.find_one({"_id": hypothesis_id})
@@ -430,11 +429,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     from ai_scientist.treesearch.perform_experiments_bfts_with_agentmanager import perform_experiments_bfts
                     perform_experiments_bfts(idea_config_path, event_callback=experiment_event_callback)
                 
-                emit_event("ai.run.stage_progress", {
-                    "run_id": run_id,
-                    "stage": stage,
-                    "progress": 1.0
-                })
+        # Final progress for stage
+        # This will be overridden by step_callback during execution
         
         print("\n📊 Aggregating plots...")
         from ai_scientist.perform_plotting import aggregate_plots
@@ -443,7 +439,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         print("\n📄 Generating paper...")
         from ai_scientist.perform_icbinb_writeup import gather_citations, perform_writeup
         
-        emit_event("ai.paper.started", {"run_id": run_id})
+        event_emitter.paper_started(run_id)
         
         citations_text = gather_citations(
             idea_dir,
@@ -464,17 +460,10 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 pdf_path = os.path.join(idea_dir, pdf_files[0])
                 upload_artifact(run_id, pdf_path, "paper")
                 
-                emit_event("ai.paper.generated", {
-                    "run_id": run_id,
-                    "artifact_key": f"runs/{run_id}/{pdf_files[0]}"
-                })
+                event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
         
         print("\n🤖 Running auto-validation...")
-        emit_event("ai.validation.auto_started", {
-            "run_id": run_id,
-            "model": "gpt-4o-2024-11-20",
-            "rubric_version": "v1"
-        })
+        event_emitter.validation_auto_started(run_id, "gpt-4o-2024-11-20")
         
         from ai_scientist.perform_llm_review import perform_review, load_paper
         from ai_scientist.llm import create_client
@@ -485,12 +474,12 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             client, client_model = create_client("gpt-4o-2024-11-20")
             review = perform_review(paper_content, client_model, client)
             
-            emit_event("ai.validation.auto_completed", {
-                "run_id": run_id,
-                "verdict": "pass",
-                "scores": {"overall": 0.75},
-                "notes": json.dumps(review) if isinstance(review, dict) else str(review)
-            })
+            event_emitter.validation_auto_completed(
+                run_id,
+                "pass",
+                {"overall": 0.75},
+                json.dumps(review) if isinstance(review, dict) else str(review)
+            )
         
         runs_collection.update_one(
             {"_id": run_id},
@@ -572,14 +561,13 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             print(f"❌ Run FAILED - requires human intervention")
             print(f"   Error: {type(e).__name__}: {str(e)[:200]}")
         
-        emit_event("ai.run.failed", {
-            "run_id": run_id,
-            "stage": CURRENT_STAGE or "unknown",
-            "code": type(e).__name__,
-            "message": str(e),
-            "traceback": traceback.format_exc(),
-            "retryable": retry_count < max_retries
-        })
+        event_emitter.run_failed(
+            run_id,
+            CURRENT_STAGE or "unknown",
+            type(e).__name__,
+            str(e),
+            traceback.format_exc()
+        )
         emitter.flush()
         
         if 'monitor_stop' in locals():
