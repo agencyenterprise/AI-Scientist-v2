@@ -311,15 +311,25 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
     print(f"🚀 Starting experiment: {run_id}")
     print(f"{'='*60}\n")
     
-    # Load .env to ensure API keys are available
+    # Load .env and export to os.environ to ensure child processes inherit
     if os.path.exists('.env'):
         from dotenv import load_dotenv
         load_dotenv(override=True)
-        print("✓ Loaded environment variables from .env")
+        
+        with open('.env') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key] = value
+        
+        print("✓ Loaded and exported environment variables from .env")
     
     # Verify critical env vars
     if not os.environ.get('OPENAI_API_KEY'):
-        raise ValueError("OPENAI_API_KEY not set - check .env file")
+        raise ValueError("OPENAI_API_KEY not set - check .env file exists and contains OPENAI_API_KEY")
+    
+    print(f"✓ OPENAI_API_KEY verified: {os.environ.get('OPENAI_API_KEY')[:20]}...")
     
     try:
         db = mongo_client['ai-scientist']

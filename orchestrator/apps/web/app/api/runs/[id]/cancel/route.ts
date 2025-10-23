@@ -1,32 +1,39 @@
-import { cancelRun } from "@/lib/services/runs.service"
-import { toJsonResponse, isHttpError, createNotFound } from "@/lib/http/errors"
-import { findRunById } from "@/lib/repos/runs.repo"
+import { NextRequest, NextResponse } from "next/server"
+import { updateRun, findRunById } from "@/lib/repos/runs.repo"
 
-export const runtime = "nodejs"
-
-export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params
-    const run = await findRunById(id)
+    const { id: runId } = await params
+    
+    const run = await findRunById(runId)
     if (!run) {
-      throw createNotFound("Run not found")
+      return NextResponse.json(
+        { error: "Run not found" },
+        { status: 404 }
+      )
     }
-    await cancelRun(id)
-    return new Response(null, { status: 204 })
+    
+    const cancelableStatuses = ["QUEUED", "SCHEDULED", "STARTING", "RUNNING"]
+    if (!cancelableStatuses.includes(run.status)) {
+      return NextResponse.json(
+        { error: `Cannot cancel run in status: ${run.status}` },
+        { status: 400 }
+      )
+    }
+    
+    await updateRun(runId, {
+      status: "CANCELED",
+      updatedAt: new Date()
+    })
+    
+    return NextResponse.json({ success: true })
   } catch (error) {
-    return handleError(error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
   }
-}
-
-function handleError(error: unknown) {
-  if (error instanceof Response) {
-    return error
-  }
-  if (isHttpError(error)) {
-    return toJsonResponse(error)
-  }
-  return new Response(JSON.stringify({ message: "Internal Server Error" }), {
-    status: 500,
-    headers: { "content-type": "application/json" }
-  })
 }

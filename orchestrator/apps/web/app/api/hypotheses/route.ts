@@ -49,7 +49,21 @@ export async function POST(req: NextRequest) {
       throw createBadRequest("Invalid payload", { issues: parsed.error.issues })
     }
     
-    const ideaJson = await generateIdeaJson(parsed.data.title, parsed.data.idea)
+    const ideaJson = {
+      Name: parsed.data.title.toLowerCase().replace(/\s+/g, "_"),
+      Title: parsed.data.title,
+      "Short Hypothesis": parsed.data.idea.slice(0, 200),
+      Abstract: parsed.data.idea,
+      Experiments: [
+        "Implement the proposed approach",
+        "Test on relevant datasets",
+        "Evaluate performance metrics"
+      ],
+      "Risk Factors and Limitations": [
+        "Computational complexity",
+        "Generalization to other domains"
+      ]
+    }
     
     const hypothesis = await createHypothesis({
       _id: randomUUID(),
