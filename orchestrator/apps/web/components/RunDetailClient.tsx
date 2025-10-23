@@ -102,6 +102,7 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
   const autoValidation = detail.validations.find((v) => v.kind === "auto")
   const humanValidation = detail.validations.find((v) => v.kind === "human")
   const canCancel = ["QUEUED", "SCHEDULED", "STARTING", "RUNNING"].includes(detail.run.status)
+  const canRetryWriteup = detail.run.status === "FAILED"
   const isTerminal = TERMINAL_STATES.includes(detail.run.status)
 
   return (
@@ -120,7 +121,12 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
         <div className="text-sm text-slate-400">
           Hypothesis: <span className="text-slate-200">{detail.hypothesis?.title ?? "Unknown"}</span>
         </div>
-        <RunActions runId={detail.run._id} canCancel={canCancel} />
+        <RunActions 
+          runId={detail.run._id} 
+          status={detail.run.status}
+          canCancel={canCancel}
+          canRetryWriteup={canRetryWriteup}
+        />
       </header>
 
       <ErrorDisplay run={detail.run} />
