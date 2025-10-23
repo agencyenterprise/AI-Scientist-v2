@@ -63,8 +63,8 @@ export const RunZ = z.object({
   lastEventSeq: z.number().int().optional(),
   claimedBy: z.string().optional(),
   claimedAt: z.coerce.date().optional(),
-  errorType: z.string().optional(),
-  errorMessage: z.string().optional(),
+  errorType: z.string().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
   retryCount: z.number().int().optional()
 })
 
