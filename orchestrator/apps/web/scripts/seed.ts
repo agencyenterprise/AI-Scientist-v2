@@ -19,6 +19,14 @@ async function main() {
       _id: randomUUID(),
       title: "Self-Refining RLHF with Sparse Rewards",
       idea: "Prototype a self-improving RLHF loop that protects against sparse reward collapse.",
+      ideaJson: {
+        Name: "self_refining_rlhf_with_sparse_rewards",
+        Title: "Self-Refining RLHF with Sparse Rewards",
+        "Short Hypothesis": "Prototype a self-improving RLHF loop that protects against sparse reward collapse.",
+        Abstract: "Prototype a self-improving RLHF loop that protects against sparse reward collapse.",
+        Experiments: ["Implement self-refining mechanism", "Test on sparse reward environments", "Evaluate stability metrics"],
+        "Risk Factors and Limitations": ["Computational overhead", "Convergence guarantees"]
+      },
       createdAt: subHours(new Date(), 24),
       createdBy: "seed",
       seed: true
@@ -27,6 +35,14 @@ async function main() {
       _id: randomUUID(),
       title: "Autonomous Agent Literature Miner",
       idea: "Mine recent arXiv papers to generate structured agendas for foundation model research.",
+      ideaJson: {
+        Name: "autonomous_agent_literature_miner",
+        Title: "Autonomous Agent Literature Miner",
+        "Short Hypothesis": "Mine recent arXiv papers to generate structured agendas for foundation model research.",
+        Abstract: "Mine recent arXiv papers to generate structured agendas for foundation model research.",
+        Experiments: ["Implement paper mining system", "Test agenda generation", "Evaluate relevance metrics"],
+        "Risk Factors and Limitations": ["API rate limits", "Quality of extracted data"]
+      },
       createdAt: subHours(new Date(), 48),
       createdBy: "seed",
       seed: true
@@ -35,6 +51,14 @@ async function main() {
       _id: randomUUID(),
       title: "GPU Scheduling via LLM Planner",
       idea: "Use an LLM planner to predict GPU allocation for long-running research experiments.",
+      ideaJson: {
+        Name: "gpu_scheduling_via_llm_planner",
+        Title: "GPU Scheduling via LLM Planner",
+        "Short Hypothesis": "Use an LLM planner to predict GPU allocation for long-running research experiments.",
+        Abstract: "Use an LLM planner to predict GPU allocation for long-running research experiments.",
+        Experiments: ["Implement LLM-based scheduler", "Test on real workloads", "Compare with baseline schedulers"],
+        "Risk Factors and Limitations": ["Prediction accuracy", "Real-time performance"]
+      },
       createdAt: subHours(new Date(), 12),
       createdBy: "seed",
       seed: true
