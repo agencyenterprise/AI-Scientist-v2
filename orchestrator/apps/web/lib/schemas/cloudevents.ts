@@ -149,7 +149,7 @@ export const NodeCreatedDataZ = z.object({
   run_id: z.string(),
   stage: z.enum(STAGES),
   node_id: z.string(),
-  parent_id: z.string().optional()
+  parent_id: z.string().nullable().optional()
 })
 
 export const NodeCodeGeneratedDataZ = z.object({
@@ -170,7 +170,7 @@ export const NodeCompletedDataZ = z.object({
   stage: z.enum(STAGES),
   node_id: z.string(),
   is_buggy: z.boolean(),
-  metric: z.string().optional(),
+  metric: z.string().nullable().optional(),
   exec_time_s: z.number()
 })
 
