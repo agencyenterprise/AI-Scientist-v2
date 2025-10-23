@@ -60,20 +60,20 @@ export const RunCanceledDataZ = z.object({
 export const StageStartedDataZ = z.object({
   run_id: z.string(),
   stage: z.enum(STAGES),
-  desc: z.string().optional()
+  desc: z.string().nullable().optional()
 })
 
 export const StageProgressDataZ = z.object({
   run_id: z.string(),
   stage: z.enum(STAGES),
   progress: z.number().min(0).max(1),
-  eta_s: z.number().optional(),
+  eta_s: z.number().nullable().optional(),
   iteration: z.number().int().optional(),
   max_iterations: z.number().int().optional(),
   good_nodes: z.number().int().optional(),
   buggy_nodes: z.number().int().optional(),
   total_nodes: z.number().int().optional(),
-  best_metric: z.string().optional()
+  best_metric: z.string().nullable().optional()
 })
 
 export const StageMetricDataZ = z.object({
@@ -86,47 +86,48 @@ export const StageMetricDataZ = z.object({
 export const StageCompletedDataZ = z.object({
   run_id: z.string(),
   stage: z.enum(STAGES),
-  duration_s: z.number().optional(),
-  summary: z.record(z.any()).optional()
+  duration_s: z.number().nullable().optional(),
+  summary: z.record(z.any()).nullable().optional()
 })
 
 export const IdeationGeneratedDataZ = z.object({
   run_id: z.string(),
   count: z.number().int(),
-  top_k: z.array(z.string()).optional()
+  top_k: z.array(z.string()).nullable().optional()
 })
 
 export const PaperGeneratedDataZ = z.object({
   run_id: z.string(),
   artifact_key: z.string(),
-  word_count: z.number().int().optional()
+  word_count: z.number().int().nullable().optional()
 })
 
 export const ValidationAutoStartedDataZ = z.object({
   run_id: z.string(),
   model: z.string(),
-  rubric_version: z.string().optional()
+  rubric_version: z.string().nullable().optional()
 })
 
 export const ValidationAutoCompletedDataZ = z.object({
   run_id: z.string(),
   verdict: z.enum(["pass", "fail"]),
-  scores: z.record(z.number()).optional(),
-  notes: z.string().optional()
+  scores: z.record(z.number()).nullable().optional(),
+  notes: z.string().nullable().optional()
 })
 
 export const RunLogDataZ = z.object({
   run_id: z.string(),
   level: z.enum(["debug", "info", "warn", "error"]),
   message: z.string(),
-  kv: z.record(z.any()).optional()
+  kv: z.record(z.any()).nullable().optional(),
+  source: z.string().nullable().optional()
 })
 
 export const ArtifactRegisteredDataZ = z.object({
   run_id: z.string(),
   key: z.string(),
   bytes: z.number().int(),
-  sha256: z.string().optional(),
+  sha256: z.string().nullable().optional(),
   content_type: z.string(),
   kind: z.string()
 })
