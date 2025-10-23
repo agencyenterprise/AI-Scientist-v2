@@ -1,11 +1,19 @@
 # Environment Configuration
 
+## ⚠️ IMPORTANT: Database Naming Convention
+
+**Always use `ai-scientist` (with hyphen) as the MongoDB database name.**
+
+The orchestrator frontend uses the `MONGODB_DB` environment variable, and all backend services (pod_worker.py, idea_processor.py) are configured to use `ai-scientist` with a hyphen.
+
+---
+
 Create a `.env` file in the project root with the following variables:
 
 ```env
 # MongoDB Configuration
 MONGODB_URI=mongodb://localhost:27017/
-MONGO_DB_NAME=ai_scientist
+MONGODB_DB=ai-scientist
 MONGO_COLLECTION=experiments
 
 # Slack Configuration (optional but recommended)
@@ -26,7 +34,7 @@ Copy this to create your `.env` file:
 ```bash
 cat > .env << 'EOF'
 MONGODB_URI=mongodb://localhost:27017/
-MONGO_DB_NAME=ai_scientist
+MONGODB_DB=ai-scientist
 MONGO_COLLECTION=experiments
 SLACK_VERIFICATION_TOKEN=
 PORT=8000

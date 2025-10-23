@@ -3,6 +3,7 @@ import { z } from "zod"
 import { createHypothesis, listHypotheses } from "@/lib/repos/hypotheses.repo"
 import { createBadRequest, isHttpError, toJsonResponse } from "@/lib/http/errors"
 import { enqueueRun } from "@/lib/services/runs.service"
+import { generateIdeaJson } from "@/lib/services/ideation.service"
 import { randomUUID } from "node:crypto"
 
 export const runtime = "nodejs"
@@ -47,10 +48,14 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       throw createBadRequest("Invalid payload", { issues: parsed.error.issues })
     }
+    
+    const ideaJson = await generateIdeaJson(parsed.data.title, parsed.data.idea)
+    
     const hypothesis = await createHypothesis({
       _id: randomUUID(),
       title: parsed.data.title,
       idea: parsed.data.idea,
+      ideaJson: ideaJson,
       createdAt: new Date(),
       createdBy: parsed.data.createdBy
     })

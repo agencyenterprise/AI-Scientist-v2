@@ -45,7 +45,7 @@ class IdeaProcessor:
         self.poll_interval = poll_interval
         self.dry_run = dry_run
         self.client = MongoClient(mongo_url)
-        self.db = self.client['ai_scientist']  # Use 'ai_scientist' database
+        self.db = self.client['ai-scientist']
         self.ideas_collection = self.db[collection_name]
         self.ideas_dir = Path("ai_scientist/ideas")
         self.workspace_root = Path(__file__).parent

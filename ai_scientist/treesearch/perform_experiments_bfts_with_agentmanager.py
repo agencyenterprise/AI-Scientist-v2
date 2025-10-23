@@ -55,11 +55,18 @@ def journal_to_rich_tree(journal: Journal):
     return tree
 
 
-def perform_experiments_bfts(config_path: str):
+def perform_experiments_bfts(config_path: str, event_callback=None):
     # turn config path string into a path object
     config_path = Path(config_path)
     cfg = load_cfg(config_path)
     logger.info(f'Starting run "{cfg.exp_name}"')
+    
+    def emit_event(event_type: str, data: dict):
+        if event_callback:
+            try:
+                event_callback(event_type, data)
+            except Exception as e:
+                logger.warning(f"Event callback failed: {e}")
 
     task_desc = load_task_desc(cfg)
     print(task_desc)
@@ -108,6 +115,7 @@ def perform_experiments_bfts(config_path: str):
             notes_dir.mkdir(parents=True, exist_ok=True)
 
             # Save latest node summary
+            latest_node_summary = None
             if journal.nodes:
                 latest_node = journal.nodes[-1]
                 if hasattr(latest_node, "_agent"):
@@ -116,16 +124,18 @@ def perform_experiments_bfts(config_path: str):
                         notes_dir / f"node_{latest_node.id}_summary.json", "w"
                     ) as f:
                         json.dump(summary, f, indent=2)
+                    latest_node_summary = summary
 
             # Generate and save stage progress summary
+            best_node = journal.get_best_node()
             stage_summary = {
                 "stage": stage.name,
                 "total_nodes": len(journal.nodes),
                 "buggy_nodes": len(journal.buggy_nodes),
                 "good_nodes": len(journal.good_nodes),
                 "best_metric": (
-                    str(journal.get_best_node().metric)
-                    if journal.get_best_node()
+                    str(best_node.metric)
+                    if best_node
                     else "None"
                 ),
                 "current_findings": journal.generate_summary(include_code=False),
@@ -136,6 +146,26 @@ def perform_experiments_bfts(config_path: str):
 
             # Save the run as before
             save_run(cfg, journal, stage_name=f"stage_{stage.name}")
+            
+            # Emit progress event
+            emit_event("ai.experiment.progress", {
+                "stage": stage.name,
+                "iteration": len(journal),
+                "max_iterations": stage.max_iterations,
+                "progress": len(journal) / stage.max_iterations if stage.max_iterations > 0 else 0,
+                "total_nodes": len(journal.nodes),
+                "buggy_nodes": len(journal.buggy_nodes),
+                "good_nodes": len(journal.good_nodes),
+                "best_metric": str(best_node.metric) if best_node else None,
+            })
+            
+            # Emit node completion if we have a latest node
+            if latest_node_summary:
+                emit_event("ai.experiment.node_completed", {
+                    "stage": stage.name,
+                    "node_id": latest_node.id if hasattr(latest_node, 'id') else None,
+                    "summary": latest_node_summary
+                })
 
         except Exception as e:
             print(f"Error in step callback: {e}")

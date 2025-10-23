@@ -90,30 +90,51 @@ pip install anthropic
 echo "Step 13: Installing LaTeX and system packages..."
 apt-get update && apt-get install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended texlive-bibtex-extra biber poppler-utils chktex
 
-# Step 14: Configure automatic conda environment activation
+# Step 14: Configure automatic conda environment activation and persist env vars
 echo "Step 14: Configuring auto-activation of ai_scientist environment..."
-if ! grep -q "conda activate ai_scientist" ~/.bashrc; then
-    echo "" >> ~/.bashrc
-    echo "# Auto-activate ai_scientist conda environment" >> ~/.bashrc
-    echo "conda activate ai_scientist" >> ~/.bashrc
-    echo "Auto-activation configured in ~/.bashrc"
-else
-    echo "Auto-activation already configured in ~/.bashrc"
+
+# Remove old AI Scientist config if it exists
+sed -i '/# Auto-activate ai_scientist conda environment/,/# End AI Scientist config/d' ~/.bashrc
+
+# Add fresh config to bashrc
+cat >> ~/.bashrc << 'BASHRC_EOF'
+
+# Auto-activate ai_scientist conda environment
+if [ -f ~/anaconda3/etc/profile.d/conda.sh ]; then
+    . ~/anaconda3/etc/profile.d/conda.sh
+    conda activate ai_scientist
 fi
+
+# AI Scientist environment variables
+BASHRC_EOF
+
+# Add environment variables from .env to bashrc
+if [ -f .env ]; then
+    echo "# Environment variables from .env" >> ~/.bashrc
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            # Add export to bashrc
+            echo "export $line" >> ~/.bashrc
+        fi
+    done < .env
+fi
+
+echo "export HF_HUB_ENABLE_HF_TRANSFER=1" >> ~/.bashrc
+echo "# End AI Scientist config" >> ~/.bashrc
+
+echo "✓ Auto-activation and environment variables configured in ~/.bashrc"
 
 echo ""
 echo "=== RunPod Initialization Complete ==="
 echo ""
-echo "Environment variables set:"
+echo "✅ Conda environment: ai_scientist (active)"
+echo "✅ Environment variables: Saved to ~/.bashrc"
+echo "✅ Auto-activation: Configured for all future shells"
+echo ""
+echo "Current environment variables:"
 echo "  OPENAI_API_KEY: ${OPENAI_API_KEY:0:10}..." 
 echo "  MONGODB_URL: ${MONGODB_URL:0:20}..."
-echo ""
-echo "✅ The ai_scientist conda environment is now active!"
-echo ""
-echo "To use in future shells, run:"
-echo "  source ~/.bashrc"
-echo ""
-echo "Or just open a new terminal (auto-activates)"
 echo ""
 
 # Step 15: GPU and PyTorch CUDA compatibility check
@@ -187,12 +208,20 @@ PYTHON_EOF
 echo "=== End of GPU Check ==="
 echo ""
 
-# Step 16: Start the pod worker
+# Step 16: Reload bashrc to ensure all env vars are available
+echo "Step 16: Reloading environment..."
+source ~/.bashrc
+
+# Step 17: Start the pod worker
+echo ""
 echo "=== Starting Pod Worker ==="
 echo ""
 echo "🤖 Launching AI Scientist pod worker..."
 echo "   This will poll MongoDB for queued experiments and run them automatically."
 echo "   Press Ctrl+C to stop the worker gracefully."
+echo ""
+echo "   If you need to restart later, just run: python pod_worker.py"
+echo "   (no need to source bashrc - it's automatic!)"
 echo ""
 python pod_worker.py
 

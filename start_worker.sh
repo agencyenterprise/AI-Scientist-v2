@@ -2,25 +2,32 @@
 
 echo "🤖 Starting AI Scientist Pod Worker"
 echo ""
-echo "Make sure you have set the following environment variables:"
-echo "  - MONGODB_URL"
-echo "  - CONTROL_PLANE_URL (optional, defaults to production)"
-echo "  - OPENAI_API_KEY"
-echo "  - ANTHROPIC_API_KEY (optional)"
-echo ""
 
+# Source bashrc to get conda and environment variables
+source ~/.bashrc
+
+# Verify required environment variables
 if [ -z "$MONGODB_URL" ]; then
-    echo "❌ MONGODB_URL not set. Please set it first:"
-    echo "   export MONGODB_URL='mongodb://...'"
+    echo "❌ MONGODB_URL not set."
+    echo ""
+    echo "If you just ran init_runpod.sh, try:"
+    echo "  source ~/.bashrc"
+    echo "  bash start_worker.sh"
+    echo ""
+    echo "Or manually set:"
+    echo "  export MONGODB_URL='mongodb://...'"
     exit 1
 fi
 
 if [ -z "$OPENAI_API_KEY" ]; then
-    echo "⚠ OPENAI_API_KEY not set. This may cause issues."
+    echo "⚠️  OPENAI_API_KEY not set. The worker may fail."
+    echo ""
 fi
 
-source ~/.bashrc
-conda activate ai_scientist 2>/dev/null || source .venv/bin/activate 2>/dev/null
+echo "✓ Environment ready"
+echo ""
+echo "Press Ctrl+C to stop the worker gracefully."
+echo ""
 
 python pod_worker.py
 
