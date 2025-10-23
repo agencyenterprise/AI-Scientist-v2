@@ -26,12 +26,18 @@ export async function POST(req: NextRequest) {
     const event = envelopeResult.data
 
     if (!validateEventData(event.type, event.data)) {
+      logger.warn({ 
+        eventType: event.type, 
+        eventData: event.data,
+        runId: event.subject.replace("run/", "")
+      }, "Event data validation failed")
+      
       return NextResponse.json(
         {
           type: "about:blank",
           title: "Invalid event data",
           status: 422,
-          detail: `Event data does not match schema for type: ${event.type}`,
+          detail: `Event data does not match schema for type: ${event.type}. Data: ${JSON.stringify(event.data)}`,
           instance: "/api/ingest/event"
         },
         { status: 422 }

@@ -13,6 +13,12 @@ export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
   const runId = event.subject.replace("run/", "")
   const eventSeq = event.extensions?.seq
 
+  logger.info({ 
+    eventType: event.type, 
+    runId: runId.slice(0, 8),
+    seq: eventSeq 
+  }, "Processing event")
+
   if (eventSeq !== undefined) {
     const run = await findRunById(runId)
     if (!run) {
@@ -37,6 +43,24 @@ export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
     seq: eventSeq
   })
 
+  try {
+    await handleEventByType(event, runId, eventSeq)
+    logger.info({ eventType: event.type, runId: runId.slice(0, 8) }, "Event handled successfully")
+  } catch (error) {
+    logger.error({ eventType: event.type, runId, error }, "Error handling event")
+    throw error
+  }
+
+  if (eventSeq !== undefined) {
+    await updateRun(runId, { lastEventSeq: eventSeq })
+  }
+}
+
+async function handleEventByType(
+  event: CloudEventsEnvelope,
+  runId: string,
+  eventSeq: number | undefined
+): Promise<void> {
   switch (event.type) {
     case "ai.run.started":
       await handleRunStarted(runId, event, eventSeq)
@@ -74,11 +98,7 @@ export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
     case "ai.run.log":
       break
     default:
-      logger.warn({ type: event.type }, "Unknown event type")
-  }
-
-  if (eventSeq !== undefined) {
-    await updateRun(runId, { lastEventSeq: eventSeq })
+      logger.warn({ type: event.type }, "Unknown event type - no handler")
   }
 }
 
