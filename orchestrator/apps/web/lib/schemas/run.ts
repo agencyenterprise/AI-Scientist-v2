@@ -11,20 +11,50 @@ const PodInfoZ = z
   .nullable()
   .optional()
 
-const StageProgressZ = z
-  .object({
-    name: z.enum(STAGES).optional(),
-    progress: z.number().min(0).max(1).optional(),
-    iteration: z.number().int().optional(),
-    maxIterations: z.number().int().optional(),
-    goodNodes: z.number().int().optional(),
-    buggyNodes: z.number().int().optional(),
-    totalNodes: z.number().int().optional(),
-    bestMetric: z.string().optional()
-  })
-  .strict()
-  .nullable()
-  .optional()
+// Normalize stage names from various formats to canonical names
+const displayToCanonicalStage: Record<string, string> = {
+  "Stage 1: Initial Implementation": "Stage_1",
+  "Stage 1: Preliminary Investigation": "Stage_1",
+  "Stage 2: Baseline Tuning": "Stage_2",
+  "Stage 3: Creative Research": "Stage_3",
+  "Stage 3: Research Agenda Execution": "Stage_3",
+  "Stage 4: Ablation Studies": "Stage_4"
+}
+
+const StageProgressZ = z.preprocess(
+  (val: any) => {
+    // Handle null/undefined
+    if (!val || typeof val !== 'object' || !val.name) return val
+    
+    // If it's already canonical, keep it
+    if (STAGES.includes(val.name as any)) {
+      return val
+    }
+    
+    // Try to normalize from display name
+    const normalized = displayToCanonicalStage[val.name]
+    if (normalized) {
+      return { ...val, name: normalized }
+    }
+    
+    // Return as-is
+    return val
+  },
+  z
+    .object({
+      name: z.enum(STAGES).optional(),
+      progress: z.number().min(0).max(1).optional(),
+      iteration: z.number().int().optional(),
+      maxIterations: z.number().int().optional(),
+      goodNodes: z.number().int().optional(),
+      buggyNodes: z.number().int().optional(),
+      totalNodes: z.number().int().optional(),
+      bestMetric: z.string().optional()
+    })
+    .strict()
+    .nullable()
+    .optional()
+)
 
 const StageTimingZ = z.record(
   z.object({
