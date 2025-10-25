@@ -172,11 +172,18 @@ class StageContext:
         except:
             pass
         
-        event_emitter.stage_completed(
+        # Emit stage completed event
+        success = event_emitter.stage_completed(
             self.run_id,
             self.stage,
             int(duration_s)
         )
+        
+        if success:
+            print(f"✓ Stage {self.stage} completed in {int(duration_s)}s")
+        else:
+            print(f"⚠️ Failed to emit stage_completed event for {self.stage}")
+        
         return False
 
 
@@ -274,6 +281,8 @@ def upload_artifact(run_id: str, file_path: str, kind: str) -> bool:
         filename = os.path.basename(file_path)
         content_type = get_content_type(filename)
         
+        print(f"📤 Uploading artifact: {filename} ({kind})")
+        
         resp = requests.post(
             f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
             json={"action": "put", "filename": filename, "content_type": content_type},
@@ -285,11 +294,13 @@ def upload_artifact(run_id: str, file_path: str, kind: str) -> bool:
         with open(file_path, "rb") as f:
             file_bytes = f.read()
         
+        print(f"   Uploading {len(file_bytes)} bytes to MinIO...")
         resp = requests.put(presigned_url, data=file_bytes, timeout=300)
         resp.raise_for_status()
         
         sha256 = hashlib.sha256(file_bytes).hexdigest()
         
+        print(f"   Registering artifact in database...")
         event_emitter.artifact_registered(
             run_id,
             f"runs/{run_id}/{filename}",
@@ -299,10 +310,12 @@ def upload_artifact(run_id: str, file_path: str, kind: str) -> bool:
             kind
         )
         
+        print(f"✓ Artifact uploaded successfully: {filename}")
         return True
     except Exception as e:
         # Artifact failed event
         print(f"❌ Artifact upload failed: {e}")
+        traceback.print_exc()
         return False
 
 
@@ -441,18 +454,18 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             emit_event(event_type, data)
             emitter.flush()
         
-        for stage in ["Stage_1", "Stage_2", "Stage_3", "Stage_4"]:
-            with StageContext(stage, run_id):
-                print(f"\n▶ Running {stage}...")
-                
-                db['runs'].update_one(
-                    {"_id": run_id},
-                    {"$set": {"currentStage": {"name": stage, "progress": 0.0}}}
-                )
-                
-                if stage == "Stage_1":
-                    from ai_scientist.treesearch.perform_experiments_bfts_with_agentmanager import perform_experiments_bfts
-                    perform_experiments_bfts(idea_config_path, event_callback=experiment_event_callback)
+        # Stage 1: Run experiments
+        with StageContext("Stage_1", run_id):
+            print(f"\n▶ Running Stage_1: Preliminary Investigation...")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage": {"name": "Stage_1", "progress": 0.0}}}
+            )
+            
+            from ai_scientist.treesearch.perform_experiments_bfts_with_agentmanager import perform_experiments_bfts
+            perform_experiments_bfts(idea_config_path, event_callback=experiment_event_callback)
+            emitter.flush()
                 
         # Final progress for stage
         # This will be overridden by step_callback during execution
@@ -492,12 +505,24 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         
         pdf_files = []
         if writeup_success:
-            pdf_files = [f for f in os.listdir(idea_dir) if f.endswith(".pdf")]
+            print(f"\n📑 Looking for PDF files in {idea_dir}...")
+            all_files = os.listdir(idea_dir)
+            pdf_files = [f for f in all_files if f.endswith(".pdf")]
+            print(f"   Found {len(pdf_files)} PDF file(s): {pdf_files}")
+            
             if pdf_files:
                 pdf_path = os.path.join(idea_dir, pdf_files[0])
-                upload_artifact(run_id, pdf_path, "paper")
+                print(f"   Uploading paper: {pdf_files[0]}")
+                upload_result = upload_artifact(run_id, pdf_path, "paper")
                 
-                event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
+                if upload_result:
+                    event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
+                else:
+                    print(f"⚠️ Paper upload failed but continuing...")
+            else:
+                print(f"⚠️ No PDF files found in {idea_dir} after successful writeup!")
+        else:
+            print(f"⚠️ Writeup did not succeed, skipping PDF upload")
         
         print("\n🤖 Running auto-validation...")
         review_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
@@ -512,10 +537,27 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             client, client_model = create_client(review_model)
             review = perform_review(paper_content, client_model, client)
             
+            # Extract verdict and score from review if available
+            verdict = "pass"  # default
+            scores = {"overall": 0.75}  # default
+            
+            if isinstance(review, dict):
+                # Try to extract verdict from review
+                if "verdict" in review:
+                    verdict = review["verdict"]
+                elif "decision" in review:
+                    verdict = review["decision"]
+                
+                # Try to extract scores from review
+                if "scores" in review:
+                    scores = review["scores"]
+                elif "score" in review:
+                    scores = {"overall": review["score"]}
+            
             event_emitter.validation_auto_completed(
                 run_id,
-                "pass",
-                {"overall": 0.75},
+                verdict,
+                scores,
                 json.dumps(review) if isinstance(review, dict) else str(review)
             )
         
@@ -716,7 +758,6 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
         
         if pdf_files:
             pdf_file = pdf_files[0]
-            print(f"📤 Uploading PDF: {pdf_file.name}")
             
             emit_event("ai.run.log", {
                 "run_id": run_id,
@@ -725,51 +766,31 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
                 "source": "writeup_retry"
             })
             
-            try:
-                with open(pdf_file, "rb") as f:
-                    pdf_content = f.read()
-                
-                response = requests.post(
-                    f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
-                    json={
-                        "key": f"{run_id}/{pdf_file.name}",
-                        "contentType": "application/pdf",
-                        "category": "paper"
-                    },
-                    timeout=30
-                )
-                response.raise_for_status()
-                presign_data = response.json()
-                
-                upload_response = requests.put(
-                    presign_data["uploadUrl"],
-                    data=pdf_content,
-                    headers={"Content-Type": "application/pdf"},
-                    timeout=120
-                )
-                upload_response.raise_for_status()
-                
-                emit_event("ai.artifact_registered", {
+            upload_result = upload_artifact(run_id, str(pdf_file), "paper")
+            
+            if upload_result:
+                emit_event("ai.run.log", {
                     "run_id": run_id,
-                    "key": presign_data["key"],
-                    "uri": presign_data["publicUrl"],
-                    "category": "paper",
-                    "metadata": {
-                        "filename": pdf_file.name,
-                        "size": len(pdf_content)
-                    }
+                    "level": "info",
+                    "message": "✅ Paper uploaded successfully",
+                    "source": "writeup_retry"
                 })
-                
-                print(f"✅ Paper uploaded successfully")
-                
-            except Exception as e:
-                print(f"⚠️  Failed to upload paper: {e}")
+                event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_file.name}")
+            else:
                 emit_event("ai.run.log", {
                     "run_id": run_id,
                     "level": "warn",
-                    "message": f"⚠️  Failed to upload paper: {str(e)}",
+                    "message": "⚠️  Failed to upload paper",
                     "source": "writeup_retry"
                 })
+        else:
+            print(f"⚠️  No PDF files found in {exp_dir} after successful writeup!")
+            emit_event("ai.run.log", {
+                "run_id": run_id,
+                "level": "warn",
+                "message": f"⚠️  No PDF files found after writeup",
+                "source": "writeup_retry"
+            })
         
         runs_collection.update_one(
             {"_id": run_id},

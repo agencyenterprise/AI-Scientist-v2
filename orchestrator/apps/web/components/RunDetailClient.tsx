@@ -244,14 +244,23 @@ function toStageProgress(name: StageName, detail: RunDetail) {
   const stage = detail.stages.find((item) => item.name === name)
   const current = detail.run.currentStage
   const progress = stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0)
+  
+  // If run is completed, override any stage status to COMPLETED
+  const status = detail.run.status === "COMPLETED" 
+    ? "COMPLETED" 
+    : (stage?.status ?? deriveStatus(name, detail.run.status, current?.name))
+  
   return {
     name,
     progress,
-    status: stage?.status ?? deriveStatus(name, detail.run.status, current?.name)
+    status
   }
 }
 
 function deriveStatus(name: StageName, runStatus: string, currentName?: StageName) {
+  // If run is completed, all stages should be completed
+  if (runStatus === "COMPLETED") return "COMPLETED"
+  
   if (currentName === name) return "RUNNING"
   const stageIndex = STAGES.indexOf(name)
   const currentIndex = currentName ? STAGES.indexOf(currentName) : -1
