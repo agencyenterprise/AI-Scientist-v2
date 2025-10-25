@@ -250,10 +250,13 @@ function toStageProgress(name: StageName, detail: RunDetail) {
   // Derive status: use stage document, or derive from run state
   let status = stage?.status ?? deriveStatus(name, detail.run.status, current?.name)
   
-  // BANDAID FIX: If stage shows COMPLETED but has no progress, fill the bar
+  // BANDAID FIX: If run is completed, all stages should show as completed with full bars
   // TODO: Fix root cause - why do stage_completed events fail to send/process?
-  if (status === "COMPLETED" && progress === 0) {
-    progress = 1.0
+  if (detail.run.status === "COMPLETED") {
+    status = "COMPLETED"
+    if (progress === 0) {
+      progress = 1.0
+    }
   }
   
   return {
