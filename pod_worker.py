@@ -693,10 +693,69 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
         })
         
         experiments_dir = Path("experiments")
+        experiments_dir.mkdir(exist_ok=True)
         matching_dirs = sorted([d for d in experiments_dir.iterdir() if run_id in d.name])
         
         if not matching_dirs:
-            raise FileNotFoundError(f"No experiment directory found for run {run_id}")
+            # Try to restore from MinIO archive
+            print(f"📦 Experiment directory not found locally, attempting to restore from archive...")
+            emit_event("ai.run.log", {
+                "run_id": run_id,
+                "level": "info",
+                "message": "📦 Restoring experiment from MinIO archive...",
+                "source": "writeup_retry"
+            })
+            
+            try:
+                # Query database for archive artifact
+                artifacts_collection = db["artifacts"]
+                archive_artifact = artifacts_collection.find_one({
+                    "runId": run_id,
+                    "key": {"$regex": "archive"}
+                })
+                
+                if not archive_artifact:
+                    raise FileNotFoundError(f"No archive artifact found for run {run_id}")
+                
+                archive_key = archive_artifact["key"]
+                print(f"   Found archive: {archive_key}")
+                
+                # Download archive from MinIO
+                import tempfile
+                import tarfile
+                
+                resp = requests.post(
+                    f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
+                    json={"action": "get", "key": archive_key},
+                    timeout=30
+                )
+                resp.raise_for_status()
+                download_url = resp.json()["url"]
+                
+                print(f"   Downloading archive...")
+                archive_resp = requests.get(download_url, timeout=300)
+                archive_resp.raise_for_status()
+                
+                # Extract archive
+                with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
+                    tmp.write(archive_resp.content)
+                    tmp_path = tmp.name
+                
+                print(f"   Extracting archive to experiments/...")
+                with tarfile.open(tmp_path, 'r:gz') as tar:
+                    tar.extractall(path="experiments")
+                
+                os.unlink(tmp_path)
+                print(f"   ✓ Archive restored successfully")
+                
+                # Re-scan for directories
+                matching_dirs = sorted([d for d in experiments_dir.iterdir() if run_id in d.name])
+                
+                if not matching_dirs:
+                    raise FileNotFoundError(f"Archive extracted but no matching directory found for run {run_id}")
+                    
+            except Exception as e:
+                raise FileNotFoundError(f"Failed to restore experiment from archive: {e}")
         
         exp_dir = matching_dirs[-1]
         print(f"📂 Using experiment directory: {exp_dir}")
