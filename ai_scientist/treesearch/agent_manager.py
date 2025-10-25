@@ -212,7 +212,7 @@ Your research idea:\n\n
 
         self.stages.append(initial_stage)
         self.current_stage = initial_stage
-        self.journals[initial_stage.name] = Journal()
+        self.journals[initial_stage.name] = Journal(event_callback=self.event_callback)
 
     def _curate_task_desc(self, stage: Stage) -> str:
         task_desc = self._get_task_desc_str()
@@ -377,6 +377,22 @@ Your research idea:\n\n
                 print(
                     f"[green]Stage {current_substage.name} completed: {evaluation['reasoning']}[/green]"
                 )
+                
+                # Emit user-facing success event
+                if self.event_callback:
+                    try:
+                        self.event_callback("ai.run.log", {
+                            "message": f"✅ Stage {current_substage.name} completed!",
+                            "level": "info"
+                        })
+                        reasoning_preview = evaluation['reasoning'][:300] + "..." if len(evaluation['reasoning']) > 300 else evaluation['reasoning']
+                        self.event_callback("ai.run.log", {
+                            "message": f"📋 {reasoning_preview}",
+                            "level": "info"
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to emit completion event: {e}")
+                
                 return True, "Found working implementation"
             else:
                 missing = ", ".join(evaluation["missing_criteria"])
@@ -386,6 +402,21 @@ Your research idea:\n\n
                 print(
                     f"[yellow]Stage {current_substage.name} not complete. Missing: {missing}[/yellow]"
                 )
+                
+                # Emit user-facing status event
+                if self.event_callback:
+                    try:
+                        self.event_callback("ai.run.log", {
+                            "message": f"🔄 Stage {current_substage.name} continuing - needs more work",
+                            "level": "info"
+                        })
+                        self.event_callback("ai.run.log", {
+                            "message": f"❓ Missing: {missing[:200]}...",
+                            "level": "warn"
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to emit status event: {e}")
+                
                 return False, "Missing criteria: " + missing
         except Exception as e:
             logger.error(
@@ -798,7 +829,7 @@ Your research idea:\n\n
 
                                 # Setup new sub-stage
                                 self.stages.append(next_substage)
-                                self.journals[next_substage.name] = Journal()
+                                self.journals[next_substage.name] = Journal(event_callback=self.event_callback)
                                 current_substage = next_substage
                             else:
                                 # If no next sub-stage could be created, end this main stage
@@ -822,7 +853,7 @@ Your research idea:\n\n
                     )
 
                     self.stages.append(next_main_stage)
-                    self.journals[next_main_stage.name] = Journal()
+                    self.journals[next_main_stage.name] = Journal(event_callback=self.event_callback)
                     self.current_stage = next_main_stage
                 else:
                     # Exit the outer loop if no more main stages

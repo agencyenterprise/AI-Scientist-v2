@@ -45,11 +45,20 @@ class ExperimentMonitor:
                 if rel_path not in self.uploaded_plots:
                     self.uploaded_plots.add(rel_path)
                     
+                    # Get file size safely - file might be moved by parallel agent
+                    try:
+                        size_bytes = plot_file.stat().st_size
+                    except (FileNotFoundError, OSError):
+                        # File was moved between glob and stat - skip for now, 
+                        # will catch it in new location on next scan
+                        self.uploaded_plots.remove(rel_path)
+                        continue
+                    
                     self.emit("ai.artifact.detected", {
                         "run_id": self.run_id,
                         "path": rel_path,
                         "type": "plot",
-                        "size_bytes": plot_file.stat().st_size
+                        "size_bytes": size_bytes
                     })
     
     def _check_logs(self) -> None:
@@ -127,11 +136,19 @@ class ExperimentMonitor:
             rel_path = str(ckpt.relative_to(self.exp_dir))
             if rel_path not in self.seen_files:
                 self.seen_files.add(rel_path)
+                
+                # Get file size safely - file might be moved/deleted
+                try:
+                    size_bytes = ckpt.stat().st_size
+                except (FileNotFoundError, OSError):
+                    self.seen_files.remove(rel_path)
+                    continue
+                
                 self.emit("ai.artifact.detected", {
                     "run_id": self.run_id,
                     "path": rel_path,
                     "type": "checkpoint",
-                    "size_bytes": ckpt.stat().st_size
+                    "size_bytes": size_bytes
                 })
     
     def _check_config_changes(self) -> None:

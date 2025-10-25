@@ -39,6 +39,120 @@ def save_token_tracker(idea_dir):
         json.dump(token_tracker.get_interactions(), f)
 
 
+def copy_best_solutions_to_root(idea_dir: str):
+    """
+    Copy the best solution code from each stage to the experiment root directory
+    for easy access and reproducibility.
+    """
+    try:
+        from pathlib import Path
+        import traceback
+        
+        idea_path = Path(idea_dir)
+        logs_dir = idea_path / "logs" / "0-run"
+        
+        if not logs_dir.exists():
+            print("⚠️ No logs directory found, skipping best solution copy")
+            return
+        
+        stage_info = []
+        best_solutions_copied = 0
+        
+        # Find all stage directories
+        stage_dirs = sorted([d for d in logs_dir.iterdir() if d.is_dir() and d.name.startswith("stage_")])
+        
+        for stage_dir in stage_dirs:
+            # Look for best_solution files
+            best_solution_files = list(stage_dir.glob("best_solution_*.py"))
+            best_node_id_file = stage_dir / "best_node_id.txt"
+            
+            if best_solution_files:
+                # Get stage name and number
+                stage_name = stage_dir.name
+                
+                # Read node ID if available
+                node_id = "unknown"
+                if best_node_id_file.exists():
+                    with open(best_node_id_file, 'r') as f:
+                        node_id = f.read().strip()
+                
+                # Copy the best solution file
+                source_file = best_solution_files[0]
+                
+                # Create a clean filename based on stage
+                # Extract stage number (e.g., stage_3_creative_research_1_first_attempt -> 3)
+                stage_num = stage_name.split('_')[1]
+                dest_filename = f"best_code_stage_{stage_num}.py"
+                dest_path = idea_path / dest_filename
+                
+                # Copy the file
+                shutil.copy2(source_file, dest_path)
+                print(f"✓ Copied {dest_filename} (node: {node_id[:8]}...)")
+                
+                best_solutions_copied += 1
+                
+                # Store info for README
+                stage_info.append({
+                    "stage_num": stage_num,
+                    "stage_name": stage_name,
+                    "filename": dest_filename,
+                    "node_id": node_id,
+                    "original_path": str(source_file.relative_to(idea_path))
+                })
+        
+        # Create a README explaining the best solutions
+        if stage_info:
+            readme_path = idea_path / "BEST_SOLUTIONS_README.md"
+            with open(readme_path, 'w') as f:
+                f.write("# Best Solution Code for Reproducibility\n\n")
+                f.write("This directory contains the best performing code from each experimental stage.\n")
+                f.write("Use these files to reproduce the results reported in the paper.\n\n")
+                
+                f.write("## Files\n\n")
+                
+                stage_descriptions = {
+                    "1": "Initial Implementation - First working version of the idea",
+                    "2": "Baseline Tuning - Hyperparameter-tuned baseline",
+                    "3": "Creative Research - **Main results used in paper**",
+                    "4": "Ablation Studies - Variations for comparison"
+                }
+                
+                for info in sorted(stage_info, key=lambda x: int(x["stage_num"])):
+                    desc = stage_descriptions.get(info["stage_num"], "Experimental stage")
+                    f.write(f"### `{info['filename']}`\n\n")
+                    f.write(f"- **Stage**: {desc}\n")
+                    f.write(f"- **Node ID**: `{info['node_id']}`\n")
+                    f.write(f"- **Original location**: `{info['original_path']}`\n")
+                    f.write(f"- **Stage directory**: `{info['stage_name']}`\n\n")
+                
+                f.write("## How to Use\n\n")
+                f.write("For reproducing the main paper results, use **`best_code_stage_3.py`** ")
+                f.write("(Creative Research stage).\n\n")
+                f.write("```bash\n")
+                f.write("# Run the best code\n")
+                f.write("python best_code_stage_3.py\n")
+                f.write("```\n\n")
+                
+                f.write("## Selection Process\n\n")
+                f.write("The best code for each stage was selected using:\n")
+                f.write("- Performance metrics (validation loss, accuracy, etc.)\n")
+                f.write("- Training dynamics\n")
+                f.write("- Plot quality and experimental evidence\n")
+                f.write("- LLM-based evaluation (GPT-5-mini) considering all factors\n\n")
+                
+                f.write("See `logs/0-run/<stage_name>/journal.json` for the complete ")
+                f.write("experimental history and selection reasoning.\n")
+            
+            print(f"✓ Created BEST_SOLUTIONS_README.md")
+        
+        print(f"✓ Copied {best_solutions_copied} best solution file(s) to experiment root")
+        
+    except Exception as e:
+        print(f"⚠️ Error copying best solutions: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run AI scientist experiments")
     parser.add_argument(
@@ -268,6 +382,10 @@ if __name__ == "__main__":
     shutil.rmtree(osp.join(idea_dir, "experiment_results"))
 
     save_token_tracker(idea_dir)
+    
+    # Copy best solutions to experiment root for easy access
+    print("\n📋 Copying best solutions to experiment root...")
+    copy_best_solutions_to_root(idea_dir)
 
     if not args.skip_writeup:
         writeup_success = False

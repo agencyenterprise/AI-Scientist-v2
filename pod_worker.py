@@ -126,6 +126,47 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 sys.excepthook = global_exception_handler
 
 
+# Global shutdown flag
+SHUTDOWN_REQUESTED = False
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C and SIGTERM gracefully"""
+    global SHUTDOWN_REQUESTED
+    sig_name = "SIGINT" if signum == 2 else "SIGTERM" if signum == 15 else f"Signal {signum}"
+    print(f"\n🛑 Received {sig_name} - shutting down gracefully...")
+    SHUTDOWN_REQUESTED = True
+    
+    try:
+        if CURRENT_RUN_ID:
+            print(f"Marking run {CURRENT_RUN_ID} as CANCELLED...")
+            from pymongo import MongoClient
+            client = MongoClient(MONGODB_URL)
+            db = client['ai-scientist']
+            db['runs'].update_one(
+                {'_id': CURRENT_RUN_ID},
+                {'$set': {
+                    'status': 'CANCELLED',
+                    'cancelledAt': datetime.utcnow()
+                }}
+            )
+            
+            emit_event("ai.run.cancelled", {
+                "run_id": CURRENT_RUN_ID,
+                "reason": f"Worker received {sig_name}",
+                "stage": CURRENT_STAGE or "unknown"
+            })
+            emitter.flush()
+            print(f"✓ Run marked as CANCELLED")
+    except Exception as e:
+        print(f"Failed to mark run as cancelled: {e}")
+    
+    sys.exit(0)
+
+import signal
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+
 class StageContext:
     def __init__(self, stage_name: str, run_id: str):
         self.stage = stage_name
@@ -345,6 +386,119 @@ def get_content_type(filename: str) -> str:
     return types.get(ext, "application/octet-stream")
 
 
+def copy_best_solutions_to_root(idea_dir: str):
+    """
+    Copy the best solution code from each stage to the experiment root directory
+    for easy access and reproducibility.
+    """
+    try:
+        from pathlib import Path
+        
+        idea_path = Path(idea_dir)
+        logs_dir = idea_path / "logs" / "0-run"
+        
+        if not logs_dir.exists():
+            print("⚠️ No logs directory found, skipping best solution copy")
+            return
+        
+        stage_info = []
+        best_solutions_copied = 0
+        
+        # Find all stage directories
+        stage_dirs = sorted([d for d in logs_dir.iterdir() if d.is_dir() and d.name.startswith("stage_")])
+        
+        for stage_dir in stage_dirs:
+            # Look for best_solution files
+            best_solution_files = list(stage_dir.glob("best_solution_*.py"))
+            best_node_id_file = stage_dir / "best_node_id.txt"
+            
+            if best_solution_files:
+                # Get stage name and number
+                stage_name = stage_dir.name
+                
+                # Read node ID if available
+                node_id = "unknown"
+                if best_node_id_file.exists():
+                    with open(best_node_id_file, 'r') as f:
+                        node_id = f.read().strip()
+                
+                # Copy the best solution file
+                source_file = best_solution_files[0]
+                
+                # Create a clean filename based on stage
+                # Extract stage number (e.g., stage_3_creative_research_1_first_attempt -> 3)
+                stage_num = stage_name.split('_')[1]
+                dest_filename = f"best_code_stage_{stage_num}.py"
+                dest_path = idea_path / dest_filename
+                
+                # Copy the file
+                import shutil
+                shutil.copy2(source_file, dest_path)
+                print(f"✓ Copied {dest_filename} (node: {node_id[:8]}...)")
+                
+                best_solutions_copied += 1
+                
+                # Store info for README
+                stage_info.append({
+                    "stage_num": stage_num,
+                    "stage_name": stage_name,
+                    "filename": dest_filename,
+                    "node_id": node_id,
+                    "original_path": str(source_file.relative_to(idea_path))
+                })
+        
+        # Create a README explaining the best solutions
+        if stage_info:
+            readme_path = idea_path / "BEST_SOLUTIONS_README.md"
+            with open(readme_path, 'w') as f:
+                f.write("# Best Solution Code for Reproducibility\n\n")
+                f.write("This directory contains the best performing code from each experimental stage.\n")
+                f.write("Use these files to reproduce the results reported in the paper.\n\n")
+                
+                f.write("## Files\n\n")
+                
+                stage_descriptions = {
+                    "1": "Initial Implementation - First working version of the idea",
+                    "2": "Baseline Tuning - Hyperparameter-tuned baseline",
+                    "3": "Creative Research - **Main results used in paper**",
+                    "4": "Ablation Studies - Variations for comparison"
+                }
+                
+                for info in sorted(stage_info, key=lambda x: int(x["stage_num"])):
+                    desc = stage_descriptions.get(info["stage_num"], "Experimental stage")
+                    f.write(f"### `{info['filename']}`\n\n")
+                    f.write(f"- **Stage**: {desc}\n")
+                    f.write(f"- **Node ID**: `{info['node_id']}`\n")
+                    f.write(f"- **Original location**: `{info['original_path']}`\n")
+                    f.write(f"- **Stage directory**: `{info['stage_name']}`\n\n")
+                
+                f.write("## How to Use\n\n")
+                f.write("For reproducing the main paper results, use **`best_code_stage_3.py`** ")
+                f.write("(Creative Research stage).\n\n")
+                f.write("```bash\n")
+                f.write("# Run the best code\n")
+                f.write("python best_code_stage_3.py\n")
+                f.write("```\n\n")
+                
+                f.write("## Selection Process\n\n")
+                f.write("The best code for each stage was selected using:\n")
+                f.write("- Performance metrics (validation loss, accuracy, etc.)\n")
+                f.write("- Training dynamics\n")
+                f.write("- Plot quality and experimental evidence\n")
+                f.write("- LLM-based evaluation (GPT-5-mini) considering all factors\n\n")
+                
+                f.write("See `logs/0-run/<stage_name>/journal.json` for the complete ")
+                f.write("experimental history and selection reasoning.\n")
+            
+            print(f"✓ Created BEST_SOLUTIONS_README.md")
+        
+        print(f"✓ Copied {best_solutions_copied} best solution file(s) to experiment root")
+        
+    except Exception as e:
+        print(f"⚠️ Error copying best solutions: {e}")
+        traceback.print_exc()
+
+
 def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
     global CURRENT_RUN_ID, EVENT_SEQ
     
@@ -446,22 +600,85 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             while not monitor_stop.is_set():
                 try:
                     exp_monitor.scan_for_updates()
-                    for plot_file in exp_monitor.uploaded_plots:
+                    # Copy to list to avoid modification during iteration
+                    plots_to_check = list(exp_monitor.uploaded_plots)
+                    for plot_file in plots_to_check:
                         full_path = exp_monitor.exp_dir / plot_file
                         if full_path.exists() and plot_file not in exp_monitor.seen_files:
                             exp_monitor.seen_files.add(plot_file)
                             upload_artifact(run_id, str(full_path), "plot")
                 except Exception as e:
                     print(f"Monitor error: {e}")
+                    import traceback
+                    traceback.print_exc()
                 time.sleep(5)
         
         monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         monitor_thread.start()
         
+        # Start heartbeat thread
+        heartbeat_stop = threading.Event()
+        def heartbeat_loop():
+            """Send heartbeat every 30 seconds so backend knows worker is alive"""
+            while not heartbeat_stop.is_set():
+                try:
+                    event_emitter.run_heartbeat(run_id)
+                    emitter.flush()
+                except Exception as e:
+                    print(f"Heartbeat error: {e}")
+                heartbeat_stop.wait(30)  # Send every 30 seconds
+        
+        heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+        heartbeat_thread.start()
+        print(f"💓 Heartbeat started (30s intervals)")
+        
         def experiment_event_callback(event_type: str, data: dict):
             data["run_id"] = run_id
             emit_event(event_type, data)
             emitter.flush()
+            
+            # Update MongoDB currentStage when internal BFTS stages progress
+            if event_type == "ai.run.stage_progress":
+                try:
+                    internal_stage = data.get("stage", "")
+                    progress = data.get("progress", 0.0)
+                    iteration = data.get("iteration", 0)
+                    max_iterations = data.get("max_iterations", 1)
+                    good_nodes = data.get("good_nodes", 0)
+                    buggy_nodes = data.get("buggy_nodes", 0)
+                    total_nodes = data.get("total_nodes", 0)
+                    
+                    # Map internal BFTS stage names to user-friendly names
+                    # Format from perform_experiments_bfts: "1_initial", "2_baseline", "3_creative", "4_ablation"
+                    stage_display_names = {
+                        "1_initial": "Stage 1: Initial Implementation",
+                        "2_baseline": "Stage 2: Baseline Tuning",
+                        "3_creative": "Stage 3: Creative Research",
+                        "4_ablation": "Stage 4: Ablation Studies",
+                        # Legacy formats just in case
+                        "stage_1": "Stage 1: Initial Implementation",
+                        "stage_2": "Stage 2: Baseline Tuning",
+                        "stage_3": "Stage 3: Creative Research",
+                        "stage_4": "Stage 4: Ablation Studies"
+                    }
+                    
+                    display_name = stage_display_names.get(internal_stage, f"Stage: {internal_stage}")
+                    
+                    print(f"🔄 Updating UI: {display_name} - {progress*100:.1f}% ({good_nodes}/{total_nodes} nodes)")
+                    
+                    db['runs'].update_one(
+                        {"_id": run_id},
+                        {"$set": {
+                            "currentStage": {
+                                "name": display_name,
+                                "progress": progress
+                            }
+                        }}
+                    )
+                except Exception as e:
+                    print(f"Failed to update currentStage in MongoDB: {e}")
+                    import traceback
+                    traceback.print_exc()
         
         # Stage 1: Run experiments
         with StageContext("Stage_1", run_id):
@@ -765,8 +982,17 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         
         emitter.flush()
         
+        # Stop background threads
+        print("\n🛑 Stopping background threads...")
         monitor_stop.set()
+        heartbeat_stop.set()
         monitor_thread.join(timeout=10)
+        heartbeat_thread.join(timeout=5)
+        print("✓ Background threads stopped")
+        
+        # Copy best solutions to experiment root for easy access
+        print("\n📋 Copying best solutions to experiment root...")
+        copy_best_solutions_to_root(idea_dir)
         
         print("\n📦 Archiving experiment artifacts to MinIO...")
         archive_uploaded = False
@@ -853,10 +1079,16 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         )
         emitter.flush()
         
+        # Stop background threads if they were started
         if 'monitor_stop' in locals():
             monitor_stop.set()
             if 'monitor_thread' in locals():
                 monitor_thread.join(timeout=5)
+        
+        if 'heartbeat_stop' in locals():
+            heartbeat_stop.set()
+            if 'heartbeat_thread' in locals():
+                heartbeat_thread.join(timeout=5)
 
 
 def perform_writeup_retry(run: Dict[str, Any], mongo_client):

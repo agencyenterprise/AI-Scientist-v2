@@ -1995,6 +1995,15 @@ class ParallelAgent:
         return leaves
 
     def _select_parallel_nodes(self) -> List[Optional[Node]]:
+        # Emit that we're selecting nodes
+        if self.event_callback:
+            try:
+                self.event_callback("ai.run.log", {
+                    "message": f"🔍 Selecting nodes to process for iteration {len(self.journal)}...",
+                    "level": "info"
+                })
+            except:
+                pass
         """Select N nodes to process in parallel,
         balancing between tree exploration and exploitation.
         Note:
@@ -2073,6 +2082,14 @@ class ParallelAgent:
             print(f"[red]self.stage_name: {self.stage_name}[/red]")
             # print(f"[red]self.best_stage3_node: {self.best_stage3_node}[/red]")
             if self.stage_name and self.stage_name.startswith("4_"):
+                if self.event_callback:
+                    try:
+                        self.event_callback("ai.run.log", {
+                            "message": f"🧪 Running ablation study variation #{len(self.journal)+1}",
+                            "level": "info"
+                        })
+                    except:
+                        pass
                 nodes_to_process.append(self.best_stage3_node)
                 continue
             # Special handling for Stage 2 (Hyperparam tuning for baseline)
@@ -2124,6 +2141,26 @@ class ParallelAgent:
         draft_count = sum(1 for n in nodes_to_process if n is None)
         debug_count = sum(1 for n in nodes_to_process if n and n.is_buggy)
         improve_count = sum(1 for n in nodes_to_process if n and not n.is_buggy)
+        
+        # Emit node selection summary
+        if self.event_callback:
+            try:
+                num_nodes = len([n for n in nodes_to_process if n is not None])
+                activity_types = []
+                if draft_count > 0:
+                    activity_types.append(f"{draft_count} new draft(s)")
+                if debug_count > 0:
+                    activity_types.append(f"{debug_count} debugging")
+                if improve_count > 0:
+                    activity_types.append(f"{improve_count} improving")
+                activity_str = ", ".join(activity_types) if activity_types else "processing"
+                
+                self.event_callback("ai.run.log", {
+                    "message": f"📤 Submitting {num_nodes} node(s): {activity_str}",
+                    "level": "info"
+                })
+            except:
+                pass
         
         if draft_count > 0:
             self._emit_event("ai.run.log", {"message": f"Generating {draft_count} new implementation(s)", "level": "info"})
