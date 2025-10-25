@@ -102,7 +102,7 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
   const autoValidation = detail.validations.find((v) => v.kind === "auto")
   const humanValidation = detail.validations.find((v) => v.kind === "human")
   const canCancel = ["QUEUED", "SCHEDULED", "STARTING", "RUNNING"].includes(detail.run.status)
-  const canRetryWriteup = detail.run.status === "FAILED"
+  const canRetryWriteup = detail.run.status === "FAILED" || detail.run.status === "COMPLETED"
   const isTerminal = TERMINAL_STATES.includes(detail.run.status)
 
   return (

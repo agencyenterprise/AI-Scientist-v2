@@ -30,9 +30,13 @@ export async function GET(req: NextRequest) {
       )
     }
     const { items, total } = await listHypotheses({}, parsed.data.page, parsed.data.pageSize)
+    
+    // Filter out test hypotheses (those with titles ending in "Test")
+    const filteredItems = items.filter(h => !h.title.endsWith(" Test"))
+    
     return NextResponse.json({
-      items,
-      total,
+      items: filteredItems,
+      total: filteredItems.length,
       page: parsed.data.page,
       pageSize: parsed.data.pageSize
     })
