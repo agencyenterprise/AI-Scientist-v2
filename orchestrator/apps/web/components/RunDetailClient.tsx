@@ -244,16 +244,19 @@ function toStageProgress(name: StageName, detail: RunDetail) {
   const stage = detail.stages.find((item) => item.name === name)
   const current = detail.run.currentStage
   
-  // If run is completed, all stages should show full progress
-  const isCompleted = detail.run.status === "COMPLETED"
-  const progress = isCompleted 
-    ? 1.0 
-    : (stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0))
+  // Derive progress: use stage document, or current stage progress, or calculate from run status
+  let progress = stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0)
   
-  // If run is completed, override any stage status to COMPLETED
-  const status = isCompleted
-    ? "COMPLETED" 
-    : (stage?.status ?? deriveStatus(name, detail.run.status, current?.name))
+  // Derive status: use stage document, or derive from run state
+  let status = stage?.status ?? deriveStatus(name, detail.run.status, current?.name)
+  
+  // BANDAID FIX: If run is completed but stage is stuck as RUNNING, force to COMPLETED
+  // TODO: Fix root cause - why do stage_completed events fail to send/process?
+  if (detail.run.status === "COMPLETED" && status === "RUNNING") {
+    console.warn(`Stage ${name} stuck as RUNNING for completed run - forcing to COMPLETED`)
+    status = "COMPLETED"
+    progress = 1.0
+  }
   
   return {
     name,

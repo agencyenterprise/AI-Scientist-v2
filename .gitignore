@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-!orchestrator/**/lib/
+# Ignore Python lib directories but not orchestrator/apps/web/lib
+/lib/
 lib64/
 parts/
 sdist/

@@ -173,6 +173,8 @@ class StageContext:
             pass
         
         # Emit stage completed event
+        # TODO: Consider using batched emitter instead of CloudEventEmitter for reliability
+        # CloudEventEmitter sends immediately and failures may be lost
         success = event_emitter.stage_completed(
             self.run_id,
             self.stage,
@@ -183,6 +185,13 @@ class StageContext:
             print(f"✓ Stage {self.stage} completed in {int(duration_s)}s")
         else:
             print(f"⚠️ Failed to emit stage_completed event for {self.stage}")
+            # Also try with batched emitter as fallback
+            emit_event("ai.run.stage_completed", {
+                "run_id": self.run_id,
+                "stage": self.stage,
+                "duration_s": int(duration_s)
+            })
+            emitter.flush()
         
         return False
 
