@@ -19,6 +19,7 @@ export function RunActions({
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const cancel = () => {
     if (!confirm("Cancel this run?")) return
@@ -62,6 +63,11 @@ export function RunActions({
     return null
   }
 
+  // For COMPLETED runs with retry option, show in dropdown menu
+  // For FAILED runs, show retry button prominently
+  const showRetryInMenu = canRetryWriteup && status === "COMPLETED"
+  const showRetryProminent = canRetryWriteup && status === "FAILED"
+
   return (
     <div className="flex items-center gap-3">
       {canCancel && (
@@ -73,7 +79,7 @@ export function RunActions({
           Cancel Run
         </button>
       )}
-      {canRetryWriteup && (
+      {showRetryProminent && (
         <button
           className="rounded border border-blue-600/60 bg-blue-900/40 px-4 py-2 text-sm font-semibold text-blue-100 disabled:opacity-40 hover:bg-blue-900/60"
           onClick={retryWriteup}
@@ -81,6 +87,35 @@ export function RunActions({
         >
           Retry Paper Generation
         </button>
+      )}
+      {showRetryInMenu && (
+        <div className="relative">
+          <button
+            className="rounded border border-slate-700 bg-slate-800/40 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800/60 disabled:opacity-40"
+            onClick={() => setMenuOpen(!menuOpen)}
+            disabled={pending}
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 z-10 mt-2 w-56 rounded-md border border-slate-700 bg-slate-800 shadow-lg">
+              <div className="py-1">
+                <button
+                  className="block w-full px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-40"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    retryWriteup()
+                  }}
+                  disabled={pending}
+                >
+                  Retry Paper Generation
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
       {error && <span className="text-sm text-rose-400">{error}</span>}
       {success && <span className="text-sm text-emerald-400">{success}</span>}

@@ -102,7 +102,19 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
   const autoValidation = detail.validations.find((v) => v.kind === "auto")
   const humanValidation = detail.validations.find((v) => v.kind === "human")
   const canCancel = ["QUEUED", "SCHEDULED", "STARTING", "RUNNING"].includes(detail.run.status)
-  const canRetryWriteup = detail.run.status === "FAILED" || detail.run.status === "COMPLETED"
+  
+  // Only allow writeup retry if:
+  // 1. Run completed successfully (always allow)
+  // 2. Run failed but reached Stage 4 (where writeup happens)
+  const currentStageIndex = detail.run.currentStage?.name 
+    ? STAGES.indexOf(detail.run.currentStage.name)
+    : -1
+  const reachedStage4 = currentStageIndex >= STAGES.indexOf("Stage_4")
+  
+  const canRetryWriteup = 
+    detail.run.status === "COMPLETED" || 
+    (detail.run.status === "FAILED" && reachedStage4)
+  
   const isTerminal = TERMINAL_STATES.includes(detail.run.status)
 
   return (
@@ -244,20 +256,11 @@ function toStageProgress(name: StageName, detail: RunDetail) {
   const stage = detail.stages.find((item) => item.name === name)
   const current = detail.run.currentStage
   
-  // Derive progress: use stage document, or current stage progress, or calculate from run status
-  let progress = stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0)
+  // Show actual progress from stage document or current stage
+  const progress = stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0)
   
-  // Derive status: use stage document, or derive from run state
-  let status = stage?.status ?? deriveStatus(name, detail.run.status, current?.name)
-  
-  // BANDAID FIX: If run is completed, all stages should show as completed with full bars
-  // TODO: Fix root cause - why do stage_completed events fail to send/process?
-  if (detail.run.status === "COMPLETED") {
-    status = "COMPLETED"
-    if (progress === 0) {
-      progress = 1.0
-    }
-  }
+  // Show actual status from stage document or derive from run state
+  const status = stage?.status ?? deriveStatus(name, detail.run.status, current?.name)
   
   return {
     name,
@@ -267,9 +270,6 @@ function toStageProgress(name: StageName, detail: RunDetail) {
 }
 
 function deriveStatus(name: StageName, runStatus: string, currentName?: StageName) {
-  // If run is completed, all stages should be completed
-  if (runStatus === "COMPLETED") return "COMPLETED"
-  
   if (currentName === name) return "RUNNING"
   const stageIndex = STAGES.indexOf(name)
   const currentIndex = currentName ? STAGES.indexOf(currentName) : -1
