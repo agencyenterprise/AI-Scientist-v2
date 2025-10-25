@@ -141,15 +141,18 @@ export function OverviewPageClient({ initialData }: { initialData: OverviewData 
         </section>
       </div>
 
-      <Link
-        href="/hypotheses"
-        className="fixed bottom-8 right-8 flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-white shadow-lg transition-all hover:bg-sky-500 hover:shadow-xl hover:scale-110"
-        title="Create new hypothesis"
-      >
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      </Link>
+      <div className="fixed bottom-8 right-8 flex flex-col items-center gap-2">
+        <span className="text-sm font-medium text-slate-300">Create New</span>
+        <Link
+          href="/hypotheses"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-white shadow-lg transition-all hover:bg-sky-500 hover:shadow-xl hover:scale-110"
+          title="Create new hypothesis"
+        >
+          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </Link>
+      </div>
     </>
   )
 }
