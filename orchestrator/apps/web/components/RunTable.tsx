@@ -1,5 +1,8 @@
+"use client"
+
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
+import { useState } from "react"
 import { StatusBadge } from "./StatusBadge"
 import type { Run } from "@/lib/schemas/run"
 
@@ -9,9 +12,48 @@ export type RunTableRow = {
 }
 
 export function RunTable({ rows }: { rows: RunTableRow[] }) {
-  if (rows.length === 0) {
+  const [hiddenRuns, setHiddenRuns] = useState<Set<string>>(new Set())
+  const [hidingRuns, setHidingRuns] = useState<Set<string>>(new Set())
+
+  const handleHideRun = async (runId: string) => {
+    if (hidingRuns.has(runId)) return
+    
+    setHidingRuns(prev => new Set([...prev, runId]))
+    
+    try {
+      const response = await fetch(`/api/runs/${runId}/hide`, {
+        method: "POST"
+      })
+      
+      if (!response.ok) {
+        throw new Error("Failed to hide run")
+      }
+      
+      // Add to hidden set for immediate UI feedback
+      setHiddenRuns(prev => new Set([...prev, runId]))
+      
+      // Reload the page after a short delay to update the list
+      setTimeout(() => {
+        window.location.reload()
+      }, 500)
+    } catch (error) {
+      console.error("Error hiding run:", error)
+      alert("Failed to hide run. Please try again.")
+    } finally {
+      setHidingRuns(prev => {
+        const next = new Set(prev)
+        next.delete(runId)
+        return next
+      })
+    }
+  }
+
+  const visibleRows = rows.filter(({ run }) => !hiddenRuns.has(run._id))
+
+  if (visibleRows.length === 0) {
     return <p className="text-sm text-slate-400">No runs found.</p>
   }
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-800">
       <table className="min-w-full divide-y divide-slate-800">
@@ -28,7 +70,7 @@ export function RunTable({ rows }: { rows: RunTableRow[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800 bg-slate-950/40">
-          {rows.map(({ run, hypothesisTitle }) => (
+          {visibleRows.map(({ run, hypothesisTitle }) => (
             <tr key={run._id} className="hover:bg-slate-900/40">
               <Cell>
                 <code className="text-xs">{run._id}</code>
@@ -53,12 +95,22 @@ export function RunTable({ rows }: { rows: RunTableRow[] }) {
               </Cell>
               <Cell>{formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}</Cell>
               <Cell>
-                <Link
-                  href={`/runs/${run._id}`}
-                  className="text-sm font-medium text-sky-400 hover:text-sky-300"
-                >
-                  View
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/runs/${run._id}`}
+                    className="text-sm font-medium text-sky-400 hover:text-sky-300"
+                  >
+                    View
+                  </Link>
+                  <button
+                    onClick={() => handleHideRun(run._id)}
+                    disabled={hidingRuns.has(run._id)}
+                    className="text-sm font-medium text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Hide this run from the dashboard"
+                  >
+                    {hidingRuns.has(run._id) ? "Hiding..." : "Hide"}
+                  </button>
+                </div>
               </Cell>
             </tr>
           ))}

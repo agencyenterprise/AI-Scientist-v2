@@ -65,7 +65,8 @@ export const RunZ = z.object({
   claimedAt: z.coerce.date().optional(),
   errorType: z.string().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
-  retryCount: z.number().int().optional()
+  retryCount: z.number().int().optional(),
+  hidden: z.boolean().optional()
 })
 
 export type Run = z.infer<typeof RunZ>

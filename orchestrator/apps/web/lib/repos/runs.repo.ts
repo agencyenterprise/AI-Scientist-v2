@@ -37,7 +37,10 @@ export async function listRuns(
   pageSize = 25
 ): Promise<{ items: Run[]; total: number }> {
   const db = await getDb()
-  const query: Filter<Run> = {}
+  const query: Filter<Run> = {
+    // Filter out hidden runs by default
+    hidden: { $ne: true }
+  }
   if (filter.hypothesisId) {
     query.hypothesisId = filter.hypothesisId
   }
@@ -59,7 +62,7 @@ export async function countRunsByStatus(statuses: RunStatus[]): Promise<Record<R
   const db = await getDb()
   const collection = db.collection<Run>(COLLECTION)
   const pipeline = [
-    { $match: { status: { $in: statuses } } },
+    { $match: { status: { $in: statuses }, hidden: { $ne: true } } },
     { $group: { _id: "$status", total: { $sum: 1 } } }
   ]
   const docs = await collection.aggregate<{ _id: RunStatus; total: number }>(pipeline).toArray()
@@ -82,6 +85,7 @@ export async function getHypothesisActivity(limit = 5): Promise<
 > {
   const db = await getDb()
   const pipeline = [
+    { $match: { hidden: { $ne: true } } },
     {
       $group: {
         _id: "$hypothesisId",
