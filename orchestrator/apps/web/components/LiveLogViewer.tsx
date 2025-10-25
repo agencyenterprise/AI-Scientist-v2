@@ -9,6 +9,7 @@ interface LogEntry {
   data: {
     message: string
     level: string
+    source?: string
   }
 }
 
@@ -75,10 +76,16 @@ export function LiveLogViewer({ runId }: LiveLogViewerProps) {
           }[log.data.level] || "text-slate-300"
           
           const timestamp = new Date(log.timestamp).toLocaleTimeString()
+          const source = log.data.source
           
           return (
             <div key={log._id} className="flex gap-2">
               <span className="text-slate-500">{timestamp}</span>
+              {source && (
+                <span className="rounded bg-sky-900/30 px-1.5 py-0.5 text-sky-400 font-semibold">
+                  {source}
+                </span>
+              )}
               <span className={levelColor}>{log.data.message}</span>
             </div>
           )
