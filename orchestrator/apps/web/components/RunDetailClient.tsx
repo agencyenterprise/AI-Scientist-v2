@@ -243,10 +243,15 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
 function toStageProgress(name: StageName, detail: RunDetail) {
   const stage = detail.stages.find((item) => item.name === name)
   const current = detail.run.currentStage
-  const progress = stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0)
+  
+  // If run is completed, all stages should show full progress
+  const isCompleted = detail.run.status === "COMPLETED"
+  const progress = isCompleted 
+    ? 1.0 
+    : (stage?.progress ?? (current?.name === name ? current.progress ?? 0 : 0))
   
   // If run is completed, override any stage status to COMPLETED
-  const status = detail.run.status === "COMPLETED" 
+  const status = isCompleted
     ? "COMPLETED" 
     : (stage?.status ?? deriveStatus(name, detail.run.status, current?.name))
   

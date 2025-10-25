@@ -876,11 +876,14 @@ def main():
             
             if run:
                 run_experiment_pipeline(run, mongo_client)
+                print("\n🔍 Experiment completed, polling for next task...")
             else:
                 writeup_retry = fetch_writeup_retry(mongo_client, POD_ID)
                 if writeup_retry:
                     perform_writeup_retry(writeup_retry, mongo_client)
+                    print("\n🔍 Writeup retry completed, polling for next task...")
                 else:
+                    print(f"⏱️  No experiments or retries available, waiting 10s...")
                     time.sleep(10)
                 
         except KeyboardInterrupt:
