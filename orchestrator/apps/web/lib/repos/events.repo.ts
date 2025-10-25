@@ -28,7 +28,7 @@ export async function listEvents(
   const query = { runId }
   const cursor = collection
     .find(query)
-    .sort({ ts: -1 })
+    .sort({ timestamp: -1 })
     .skip((page - 1) * pageSize)
     .limit(pageSize)
 

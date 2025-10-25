@@ -40,7 +40,9 @@ export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
     data: event.data,
     source: event.source,
     timestamp: new Date(event.time),
-    seq: eventSeq
+    seq: eventSeq,
+    message: event.type === "ai.run.log" ? event.data.message : undefined,
+    level: event.type === "ai.run.log" ? event.data.level : undefined
   })
 
   try {

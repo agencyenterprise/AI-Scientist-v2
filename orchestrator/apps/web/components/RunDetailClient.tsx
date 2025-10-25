@@ -22,6 +22,7 @@ import { StageProgressPanel } from "@/components/StageProgressPanel"
 import { StageTimingView } from "@/components/StageTimingView"
 import { LiveLogViewer } from "@/components/LiveLogViewer"
 import { PlotGallery } from "@/components/PlotGallery"
+import { CurrentActivityBanner } from "@/components/CurrentActivityBanner"
 
 type RunDetail = {
   run: Run
@@ -142,6 +143,10 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
       </header>
 
       <ErrorDisplay run={detail.run} />
+      
+      {detail.run.status === "RUNNING" && (
+        <CurrentActivityBanner runId={detail.run._id} />
+      )}
       
       {detail.run.status === "RUNNING" && (
         <section className="grid gap-6 md:grid-cols-2">

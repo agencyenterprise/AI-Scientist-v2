@@ -671,7 +671,13 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                         {"$set": {
                             "currentStage": {
                                 "name": display_name,
-                                "progress": progress
+                                "progress": progress,
+                                "iteration": iteration,
+                                "maxIterations": max_iterations,
+                                "goodNodes": good_nodes,
+                                "buggyNodes": buggy_nodes,
+                                "totalNodes": total_nodes,
+                                "bestMetric": data.get("best_metric")
                             }
                         }}
                     )
