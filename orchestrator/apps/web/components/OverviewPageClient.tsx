@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { RunTable } from "@/components/RunTable"
 import { QueueStatus } from "@/components/QueueStatus"
@@ -73,13 +73,35 @@ export function OverviewPageClient({ initialData }: { initialData: OverviewData 
     "FAILED"
   ]
 
+  // Calculate estimated time for all queued and running experiments
+  // Each experiment needs 1 full pod for ~6 hours
+  const totalActiveExperiments = (data.counts.QUEUED ?? 0) + (data.counts.RUNNING ?? 0)
+  const estimatedHours = totalActiveExperiments > 0 
+    ? Math.ceil(totalActiveExperiments / data.queueStatus.totalSlots) * 6
+    : 0
+
   return (
     <>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10">
         <section>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-100">Overview</h1>
-            <span className="text-xs text-slate-500">(polling every 5s)</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold text-slate-100">Overview</h1>
+              <span className="text-xs text-slate-500">(polling every 5s)</span>
+            </div>
+            {totalActiveExperiments > 0 && (
+              <div className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2">
+                <p className="text-xs text-slate-400">
+                  Estimated completion time:{" "}
+                  <span className="font-semibold text-slate-200">
+                    ~{estimatedHours} {estimatedHours === 1 ? 'hour' : 'hours'}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ({totalActiveExperiments} {totalActiveExperiments === 1 ? 'experiment' : 'experiments'} @ 6hrs each, {data.queueStatus.totalSlots} {data.queueStatus.totalSlots === 1 ? 'pod' : 'pods'})
+                </p>
+              </div>
+            )}
           </div>
           <p className="mt-2 text-sm text-slate-400">
             Real-time view over the AI Scientist pipeline sourced directly from MongoDB.
@@ -124,20 +146,46 @@ export function OverviewPageClient({ initialData }: { initialData: OverviewData 
           ) : (
             <ul className="grid gap-4 md:grid-cols-2">
               {data.topHypotheses.map(({ hypothesis, runCount, lastRunAt }: { hypothesis: Hypothesis; runCount: number; lastRunAt: Date | string }) => (
-                <li
+                <HypothesisCard
                   key={hypothesis._id}
-                  className="rounded-lg border border-slate-800 bg-slate-900/40 p-4"
-                >
-                  <div className="text-sm font-semibold text-slate-100">{hypothesis.title}</div>
-                  <p className="mt-1 text-xs text-slate-400">{hypothesis.idea}</p>
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                    <span>{runCount} runs</span>
-                    <span>Last run {formatDistanceToNow(new Date(lastRunAt), { addSuffix: true })}</span>
-                  </div>
-                </li>
+                  hypothesis={hypothesis}
+                  runCount={runCount}
+                  lastRunAt={lastRunAt}
+                />
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-100">FAQ</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+              <h3 className="text-sm font-semibold text-slate-100">How long does each run take?</h3>
+              <p className="mt-2 text-sm text-slate-400">Each experiment takes approximately 5-6 hours to complete.</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+              <h3 className="text-sm font-semibold text-slate-100">What happens if I create many hypotheses?</h3>
+              <p className="mt-2 text-sm text-slate-400">
+                All experiments share a pool of RunPod instances. If all pods are busy, new experiments will queue automatically until a pod becomes available.
+              </p>
+              <p className="mt-2 text-sm text-slate-400">
+                Currently running with <span className="font-semibold text-slate-200">{data.queueStatus.totalSlots}</span> {data.queueStatus.totalSlots === 1 ? 'pod' : 'pods'}.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+              <h3 className="text-sm font-semibold text-slate-100">What can I see during the run?</h3>
+              <p className="mt-2 text-sm text-slate-400">
+                Click on any run to view real-time progress, including generated plots and charts as the experiment executes.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+              <h3 className="text-sm font-semibold text-slate-100">What are the final deliverables?</h3>
+              <p className="mt-2 text-sm text-slate-400">
+                When complete, each run produces a full research paper (PDF), all generated plots and experimental data, and the complete source code for reproducibility.
+              </p>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -154,6 +202,50 @@ export function OverviewPageClient({ initialData }: { initialData: OverviewData 
         </Link>
       </div>
     </>
+  )
+}
+
+function HypothesisCard({
+  hypothesis,
+  runCount,
+  lastRunAt
+}: {
+  hypothesis: Hypothesis
+  runCount: number
+  lastRunAt: Date | string
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const ideaPreview = hypothesis.idea.length > 150 
+    ? hypothesis.idea.substring(0, 150) + "..." 
+    : hypothesis.idea
+
+  return (
+    <li className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm font-semibold text-slate-100 flex-1">{hypothesis.title}</div>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="text-slate-400 hover:text-slate-200 transition-colors"
+          title={isExpanded ? "Collapse" : "Expand"}
+        >
+          <svg
+            className={`h-5 w-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-slate-400">
+        {isExpanded ? hypothesis.idea : ideaPreview}
+      </p>
+      <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+        <span>{runCount} runs</span>
+        <span>Last run {formatDistanceToNow(new Date(lastRunAt), { addSuffix: true })}</span>
+      </div>
+    </li>
   )
 }
 

@@ -150,18 +150,18 @@ class AgentManager:
         self.main_stage_goals: Dict[int, str] = {
             1: """
                 - Focus on getting basic working implementation
-                - Use a simple dataset
+                - Use a dataset appropriate to the experiment
                 - Aim for basic functional correctness
                 - If you are given \"Code To Use\", you can directly use it as a starting point.""",
             2: """
                 - Change hyperparameters such as learning rate, number of epochs, batch size, etc. to improve the performance
                 - DO NOT change the model architecture from the previous stage
-                - Introduce TWO more new datasets from HuggingFace test the model. Try very hard to think what Huggingface datasets can be used here for testing.""",
+                - Introduce additional datasets from HuggingFace to test the model. Use dataset sizes appropriate to the experiment. Use streaming=True for very large datasets. See hf_dataset_reference.py for examples of available datasets.""",
             3: """
                 - Explore novel improvements
                 - Come up with experiments to reveal new insights
                 - Be creative and think outside the box
-                - MAKE SURE you use THREE HuggingFace dataset in total to test your models""",
+                - Test your models on multiple HuggingFace datasets to demonstrate generalization. Use dataset sizes appropriate to the experiment. Usually THREE datasets are enough.""",
             4: """
                 - Conduct systematic component analysis that reveals the contribution of each part
                 - Use the same datasets you used from the previous stage""",

@@ -466,14 +466,28 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         # Stage 1: Run experiments
         with StageContext("Stage_1", run_id):
             print(f"\n▶ Running Stage_1: Preliminary Investigation...")
+            event_emitter.log(run_id, "Starting preliminary investigation (BFTS experiments)", "info", "Stage_1")
             
             db['runs'].update_one(
                 {"_id": run_id},
                 {"$set": {"currentStage": {"name": "Stage_1", "progress": 0.0}}}
             )
             
+            # Log configuration details
+            import yaml
+            config_path = os.path.join(os.path.dirname(__file__), "bfts_config.yaml")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    exp_config = yaml.safe_load(f)
+                    max_iterations = exp_config.get("max_iterations_per_stage", {}).get("Stage_1", 5)
+                    event_emitter.log(run_id, f"Max iterations for Stage_1: {max_iterations}", "info", "Stage_1")
+            
+            event_emitter.log(run_id, f"Loading experiment configuration from: {idea_config_path}", "info", "Stage_1")
+            
             from ai_scientist.treesearch.perform_experiments_bfts_with_agentmanager import perform_experiments_bfts
             perform_experiments_bfts(idea_config_path, event_callback=experiment_event_callback)
+            
+            event_emitter.log(run_id, "Stage_1 experiments completed", "info", "Stage_1")
             emitter.flush()
                 
         # Final progress for stage
@@ -490,85 +504,255 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         
         print(f"✓ Using models from config: plot={plot_model}, small={small_model}, big={big_model}")
         
-        print("\n📊 Aggregating plots...")
-        from ai_scientist.perform_plotting import aggregate_plots
-        aggregate_plots(base_folder=idea_dir, model=plot_model)
+        # Stage 2: Aggregate plots
+        with StageContext("Stage_2", run_id):
+            print("\n▶ Running Stage_2: Baseline Tuning (Plot Aggregation)...")
+            event_emitter.log(run_id, "Starting plot aggregation", "info", "Stage_2")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage": {"name": "Stage_2", "progress": 0.0}}}
+            )
+            
+            # Count existing plots
+            plots_dir = os.path.join(idea_dir, "plots")
+            existing_plots = []
+            if os.path.exists(plots_dir):
+                existing_plots = [f for f in os.listdir(plots_dir) if f.endswith(('.png', '.pdf', '.jpg'))]
+                event_emitter.log(run_id, f"Found {len(existing_plots)} existing plots to aggregate", "info", "Stage_2")
+            else:
+                event_emitter.log(run_id, "No existing plots directory found", "warning", "Stage_2")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 0.25}}
+            )
+            
+            print("\n📊 Aggregating plots...")
+            event_emitter.log(run_id, f"Generating aggregator script using model: {plot_model}", "info", "Stage_2")
+            
+            from ai_scientist.perform_plotting import aggregate_plots
+            aggregate_plots(base_folder=idea_dir, model=plot_model)
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 0.75}}
+            )
+            
+            # Count final figures
+            figures_dir = os.path.join(idea_dir, "figures")
+            final_figures = []
+            if os.path.exists(figures_dir):
+                final_figures = [f for f in os.listdir(figures_dir) if f.endswith(('.png', '.pdf', '.jpg'))]
+                event_emitter.log(run_id, f"Generated {len(final_figures)} final figures", "info", "Stage_2")
+                
+                # Upload figures as artifacts
+                for fig_file in final_figures:
+                    fig_path = os.path.join(figures_dir, fig_file)
+                    if os.path.isfile(fig_path):
+                        upload_artifact(run_id, fig_path, "figure")
+            else:
+                event_emitter.log(run_id, "Warning: No figures directory created", "warning", "Stage_2")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 1.0}}
+            )
+            
+            emitter.flush()
         
-        print("\n📄 Generating paper...")
-        from ai_scientist.perform_icbinb_writeup import gather_citations, perform_writeup
+        # Stage 3: Paper generation
+        with StageContext("Stage_3", run_id):
+            print("\n▶ Running Stage_3: Research Agenda Execution (Paper Generation)...")
+            event_emitter.log(run_id, "Starting paper generation", "info", "Stage_3")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage": {"name": "Stage_3", "progress": 0.0}}}
+            )
+            
+            print("\n📄 Generating paper...")
+            from ai_scientist.perform_icbinb_writeup import gather_citations, perform_writeup
+            
+            event_emitter.paper_started(run_id)
+            event_emitter.log(run_id, f"Gathering citations using model: {small_model} (15 rounds)", "info", "Stage_3")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 0.1}}
+            )
+            
+            citations_text = gather_citations(
+                idea_dir,
+                num_cite_rounds=15,
+                small_model=small_model
+            )
+            
+            citation_count = len(citations_text.split('\n')) if citations_text else 0
+            event_emitter.log(run_id, f"Gathered {citation_count} lines of citations", "info", "Stage_3")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 0.4}}
+            )
+            
+            event_emitter.log(run_id, f"Starting writeup generation using model: {big_model} (4 pages max)", "info", "Stage_3")
+            
+            writeup_success = perform_writeup(
+                base_folder=idea_dir,
+                big_model=big_model,
+                page_limit=4,
+                citations_text=citations_text
+            )
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 0.8}}
+            )
+            
+            pdf_files = []
+            if writeup_success:
+                event_emitter.log(run_id, "Writeup generation succeeded", "info", "Stage_3")
+                print(f"\n📑 Looking for PDF files in {idea_dir}...")
+                all_files = os.listdir(idea_dir)
+                pdf_files = [f for f in all_files if f.endswith(".pdf")]
+                print(f"   Found {len(pdf_files)} PDF file(s): {pdf_files}")
+                
+                if pdf_files:
+                    pdf_path = os.path.join(idea_dir, pdf_files[0])
+                    
+                    # Get PDF file size
+                    pdf_size_bytes = os.path.getsize(pdf_path)
+                    pdf_size_mb = pdf_size_bytes / (1024 * 1024)
+                    event_emitter.log(run_id, f"Generated PDF: {pdf_files[0]} ({pdf_size_mb:.2f} MB)", "info", "Stage_3")
+                    
+                    # Create local backup directory and save PDF copy
+                    backup_dir = Path("local_pdf_backups")
+                    backup_dir.mkdir(exist_ok=True)
+                    backup_filename = f"{run_id}_{pdf_files[0]}"
+                    backup_path = backup_dir / backup_filename
+                    
+                    print(f"   💾 Saving local backup: {backup_path}")
+                    import shutil
+                    shutil.copy2(pdf_path, backup_path)
+                    print(f"   ✓ Local backup saved")
+                    event_emitter.log(run_id, f"Local backup saved: {backup_path}", "info", "Stage_3")
+                    
+                    print(f"   Uploading paper: {pdf_files[0]}")
+                    event_emitter.log(run_id, f"Uploading paper to artifact storage", "info", "Stage_3")
+                    upload_result = upload_artifact(run_id, pdf_path, "paper")
+                    
+                    if upload_result:
+                        event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
+                        event_emitter.log(run_id, "Paper uploaded successfully", "info", "Stage_3")
+                    else:
+                        print(f"⚠️ Paper upload failed but local backup exists at {backup_path}")
+                        event_emitter.log(run_id, f"Paper upload failed, but backup exists at {backup_path}", "warning", "Stage_3")
+                else:
+                    print(f"⚠️ No PDF files found in {idea_dir} after successful writeup!")
+                    event_emitter.log(run_id, "No PDF found after writeup", "error", "Stage_3")
+            else:
+                print(f"⚠️ Writeup did not succeed, skipping PDF upload")
+                event_emitter.log(run_id, "Writeup generation failed", "error", "Stage_3")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 1.0}}
+            )
+            
+            emitter.flush()
         
-        event_emitter.paper_started(run_id)
-        
-        citations_text = gather_citations(
-            idea_dir,
-            num_cite_rounds=15,
-            small_model=small_model
-        )
-        
-        writeup_success = perform_writeup(
-            base_folder=idea_dir,
-            big_model=big_model,
-            page_limit=4,
-            citations_text=citations_text
-        )
-        
-        pdf_files = []
-        if writeup_success:
-            print(f"\n📑 Looking for PDF files in {idea_dir}...")
-            all_files = os.listdir(idea_dir)
-            pdf_files = [f for f in all_files if f.endswith(".pdf")]
-            print(f"   Found {len(pdf_files)} PDF file(s): {pdf_files}")
+        # Stage 4: Auto-validation
+        with StageContext("Stage_4", run_id):
+            print("\n▶ Running Stage_4: Ablation Studies (Auto-validation)...")
+            event_emitter.log(run_id, "Starting auto-validation", "info", "Stage_4")
+            
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage": {"name": "Stage_4", "progress": 0.0}}}
+            )
+            
+            print("\n🤖 Running auto-validation...")
+            review_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
+            event_emitter.validation_auto_started(run_id, review_model)
+            event_emitter.log(run_id, f"Using review model: {review_model}", "info", "Stage_4")
+            
+            from ai_scientist.perform_llm_review import perform_review, load_paper
+            from ai_scientist.llm import create_client
             
             if pdf_files:
                 pdf_path = os.path.join(idea_dir, pdf_files[0])
-                print(f"   Uploading paper: {pdf_files[0]}")
-                upload_result = upload_artifact(run_id, pdf_path, "paper")
+                event_emitter.log(run_id, f"Loading paper from: {pdf_files[0]}", "info", "Stage_4")
                 
-                if upload_result:
-                    event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
-                else:
-                    print(f"⚠️ Paper upload failed but continuing...")
+                db['runs'].update_one(
+                    {"_id": run_id},
+                    {"$set": {"currentStage.progress": 0.2}}
+                )
+                
+                paper_content = load_paper(pdf_path)
+                paper_length = len(paper_content) if paper_content else 0
+                event_emitter.log(run_id, f"Loaded paper content ({paper_length} characters)", "info", "Stage_4")
+                
+                db['runs'].update_one(
+                    {"_id": run_id},
+                    {"$set": {"currentStage.progress": 0.4}}
+                )
+                
+                event_emitter.log(run_id, "Sending paper to LLM for review", "info", "Stage_4")
+                client, client_model = create_client(review_model)
+                review = perform_review(paper_content, client_model, client)
+                
+                db['runs'].update_one(
+                    {"_id": run_id},
+                    {"$set": {"currentStage.progress": 0.7}}
+                )
+                
+                # Extract verdict and score from review if available
+                verdict = "pass"  # default
+                scores = {"overall": 0.75}  # default
+                
+                if isinstance(review, dict):
+                    # Try to extract verdict from review
+                    if "verdict" in review:
+                        verdict = review["verdict"]
+                    elif "decision" in review:
+                        verdict = review["decision"]
+                    
+                    # Try to extract scores from review
+                    if "scores" in review:
+                        scores = review["scores"]
+                    elif "score" in review:
+                        scores = {"overall": review["score"]}
+                    
+                    # Log individual scores if available
+                    if isinstance(scores, dict):
+                        score_summary = ", ".join([f"{k}: {v}" for k, v in scores.items()])
+                        event_emitter.log(run_id, f"Review scores: {score_summary}", "info", "Stage_4")
+                
+                event_emitter.log(run_id, f"Validation verdict: {verdict}", "info", "Stage_4")
+                
+                db['runs'].update_one(
+                    {"_id": run_id},
+                    {"$set": {"currentStage.progress": 0.9}}
+                )
+                
+                event_emitter.validation_auto_completed(
+                    run_id,
+                    verdict,
+                    scores,
+                    json.dumps(review) if isinstance(review, dict) else str(review)
+                )
+                
+                event_emitter.log(run_id, "Auto-validation completed successfully", "info", "Stage_4")
             else:
-                print(f"⚠️ No PDF files found in {idea_dir} after successful writeup!")
-        else:
-            print(f"⚠️ Writeup did not succeed, skipping PDF upload")
-        
-        print("\n🤖 Running auto-validation...")
-        review_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
-        event_emitter.validation_auto_started(run_id, review_model)
-        
-        from ai_scientist.perform_llm_review import perform_review, load_paper
-        from ai_scientist.llm import create_client
-        
-        if pdf_files:
-            pdf_path = os.path.join(idea_dir, pdf_files[0])
-            paper_content = load_paper(pdf_path)
-            client, client_model = create_client(review_model)
-            review = perform_review(paper_content, client_model, client)
+                event_emitter.log(run_id, "No PDF available for validation", "error", "Stage_4")
             
-            # Extract verdict and score from review if available
-            verdict = "pass"  # default
-            scores = {"overall": 0.75}  # default
-            
-            if isinstance(review, dict):
-                # Try to extract verdict from review
-                if "verdict" in review:
-                    verdict = review["verdict"]
-                elif "decision" in review:
-                    verdict = review["decision"]
-                
-                # Try to extract scores from review
-                if "scores" in review:
-                    scores = review["scores"]
-                elif "score" in review:
-                    scores = {"overall": review["score"]}
-            
-            event_emitter.validation_auto_completed(
-                run_id,
-                verdict,
-                scores,
-                json.dumps(review) if isinstance(review, dict) else str(review)
+            db['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage.progress": 1.0}}
             )
+            
+            emitter.flush()
         
         runs_collection.update_one(
             {"_id": run_id},
@@ -585,6 +769,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         monitor_thread.join(timeout=10)
         
         print("\n📦 Archiving experiment artifacts to MinIO...")
+        archive_uploaded = False
         try:
             import tarfile
             import tempfile
@@ -597,18 +782,23 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 if os.path.exists('ai_scientist/ideas'):
                     tar.add('ai_scientist/ideas', arcname='ideas')
             
-            upload_artifact(run_id, archive_path, "archive")
+            archive_uploaded = upload_artifact(run_id, archive_path, "archive")
             os.unlink(archive_path)
             
-            print(f"✓ Archived experiment to MinIO")
-            
-            print(f"🧹 Cleaning up local experiment directory...")
-            import shutil
-            shutil.rmtree(idea_dir, ignore_errors=True)
-            print(f"✓ Cleaned up {idea_dir}")
+            if archive_uploaded:
+                print(f"✓ Archived experiment to MinIO")
+                print(f"🧹 Cleaning up local experiment directory...")
+                import shutil
+                shutil.rmtree(idea_dir, ignore_errors=True)
+                print(f"✓ Cleaned up {idea_dir}")
+            else:
+                print(f"⚠️ Archive upload failed - keeping local experiment directory: {idea_dir}")
+                print(f"   You can manually clean up later or retry the archive upload")
             
         except Exception as e:
             print(f"⚠️ Archive/cleanup failed: {e}")
+            print(f"   Keeping local experiment directory: {idea_dir}")
+            traceback.print_exc()
         
         print(f"\n{'='*60}")
         print(f"✅ Experiment completed successfully: {run_id}")
@@ -827,6 +1017,23 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
         if pdf_files:
             pdf_file = pdf_files[0]
             
+            # Create local backup directory and save PDF copy
+            backup_dir = Path("local_pdf_backups")
+            backup_dir.mkdir(exist_ok=True)
+            backup_filename = f"{run_id}_{pdf_file.name}"
+            backup_path = backup_dir / backup_filename
+            
+            emit_event("ai.run.log", {
+                "run_id": run_id,
+                "level": "info",
+                "message": f"💾 Saving local backup: {backup_path}",
+                "source": "writeup_retry"
+            })
+            
+            import shutil
+            shutil.copy2(str(pdf_file), str(backup_path))
+            print(f"   ✓ Local backup saved: {backup_path}")
+            
             emit_event("ai.run.log", {
                 "run_id": run_id,
                 "level": "info",
@@ -848,7 +1055,7 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
                 emit_event("ai.run.log", {
                     "run_id": run_id,
                     "level": "warn",
-                    "message": "⚠️  Failed to upload paper",
+                    "message": f"⚠️  Failed to upload paper but local backup exists at {backup_path}",
                     "source": "writeup_retry"
                 })
         else:

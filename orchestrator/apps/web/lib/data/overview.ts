@@ -39,7 +39,7 @@ export async function getOverviewData() {
     }))
     .filter(
       (item): item is { hypothesis: NonNullable<typeof item.hypothesis>; runCount: number; lastRunAt: Date } =>
-        Boolean(item.hypothesis) && !item.hypothesis.title.endsWith(" Test")
+        item.hypothesis !== undefined && !item.hypothesis.title.endsWith(" Test")
     )
 
   return serializeDates({
