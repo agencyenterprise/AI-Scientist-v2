@@ -8,6 +8,17 @@ interface StageProgressPanelProps {
   run: Run
 }
 
+function formatDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`
+  }
+  return `${minutes}m ${seconds}s`
+}
+
 export function StageProgressPanel({ run }: StageProgressPanelProps) {
   const currentStage = run.currentStage
   const [now, setNow] = useState(Date.now())
@@ -38,14 +49,10 @@ export function StageProgressPanel({ run }: StageProgressPanelProps) {
   const stageTiming = run.stageTiming?.[currentStage.name]
   const stageStartedAt = stageTiming?.startedAt ? new Date(stageTiming.startedAt).getTime() : (run.startedAt ? new Date(run.startedAt).getTime() : now)
   const elapsedS = stageTiming?.elapsed_s || Math.floor((now - stageStartedAt) / 1000)
-  const elapsedMin = Math.floor(elapsedS / 60)
-  const elapsedSec = elapsedS % 60
   
   const eta_s = elapsedS > 0 && progress > 0.01 
     ? Math.floor((elapsedS / progress) - elapsedS) 
     : null
-  const etaMin = eta_s ? Math.floor(eta_s / 60) : null
-  const etaSec = eta_s ? eta_s % 60 : null
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
@@ -85,7 +92,7 @@ export function StageProgressPanel({ run }: StageProgressPanelProps) {
         <div>
           <span className="text-slate-400">Elapsed:</span>
           <span className="ml-2 font-mono text-slate-200">
-            {elapsedMin}m {elapsedSec}s
+            {formatDuration(elapsedS)}
           </span>
         </div>
         
@@ -93,7 +100,7 @@ export function StageProgressPanel({ run }: StageProgressPanelProps) {
           <div>
             <span className="text-slate-400">ETA:</span>
             <span className="ml-2 font-mono text-amber-400">
-              ~{etaMin}m {etaSec}s
+              ~{formatDuration(eta_s)}
             </span>
           </div>
         )}

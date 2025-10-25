@@ -174,21 +174,33 @@ async function handleStageStarted(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
-  const stageIndex = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"].indexOf(data.stage)
+  const canonicalStages = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"]
+  
+  // Normalize stage name (backend might send "Stage 1: ..." or "Stage_1")
+  let stageName = data.stage
+  if (!canonicalStages.includes(stageName)) {
+    // Try to extract stage number from display name
+    const match = stageName.match(/Stage\s*(\d+)/)
+    if (match) {
+      stageName = `Stage_${match[1]}`
+    }
+  }
+  
+  const stageIndex = canonicalStages.indexOf(stageName)
   const { randomUUID } = await import("node:crypto")
   
   await createStage({
     _id: randomUUID(),
     runId,
     index: stageIndex,
-    name: data.stage,
+    name: stageName,
     status: "RUNNING",
     startedAt: new Date(event.time),
     progress: 0
   })
   await updateRun(runId, {
     currentStage: {
-      name: data.stage,
+      name: stageName,
       progress: 0
     }
   })
@@ -200,17 +212,27 @@ async function handleStageProgress(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
+  const canonicalStages = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"]
+  
+  // Normalize stage name
+  let stageName = data.stage
+  if (!canonicalStages.includes(stageName)) {
+    const match = stageName.match(/Stage\s*(\d+)/)
+    if (match) {
+      stageName = `Stage_${match[1]}`
+    }
+  }
   
   // Find stage by runId and name instead of composite _id
   const db = await import("../db/mongo").then(m => m.getDb())
   await db.collection("stages").updateOne(
-    { runId, name: data.stage },
+    { runId, name: stageName },
     { $set: { progress: data.progress, updatedAt: new Date(event.time) } }
   )
   
   const updateData: any = {
     currentStage: {
-      name: data.stage,
+      name: stageName,
       progress: data.progress,
       iteration: data.iteration,
       maxIterations: data.max_iterations,
@@ -244,18 +266,28 @@ async function handleStageCompleted(
   eventSeq: number | undefined
 ): Promise<void> {
   const data = event.data
+  const canonicalStages = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"]
+  
+  // Normalize stage name
+  let stageName = data.stage
+  if (!canonicalStages.includes(stageName)) {
+    const match = stageName.match(/Stage\s*(\d+)/)
+    if (match) {
+      stageName = `Stage_${match[1]}`
+    }
+  }
   
   const db = await import("../db/mongo").then(m => m.getDb())
   await db.collection("stages").updateOne(
-    { runId, name: data.stage },
+    { runId, name: stageName },
     { $set: { status: "COMPLETED", completedAt: new Date(event.time), progress: 1 } }
   )
   
   const run = await findRunById(runId)
   if (run && run.stageTiming) {
     await updateRun(runId, {
-      [`stageTiming.${data.stage}.duration_s`]: data.duration_s,
-      [`stageTiming.${data.stage}.completedAt`]: new Date(event.time)
+      [`stageTiming.${stageName}.duration_s`]: data.duration_s,
+      [`stageTiming.${stageName}.completedAt`]: new Date(event.time)
     })
   }
 }
