@@ -6,9 +6,11 @@ import { useState } from "react"
 interface LogEntry {
   _id: string
   timestamp: Date
+  message?: string | null
+  level?: string | null
   data: {
-    message: string
-    level: string
+    message?: string
+    level?: string
     source?: string
   }
 }
@@ -37,7 +39,8 @@ export function LiveLogViewer({ runId }: LiveLogViewerProps) {
 
   const filteredLogs = logs?.filter(log => {
     if (filter === "all") return true
-    return log.data.level === filter
+    const level = log.level || log.data?.level
+    return level === filter
   }) || []
 
   return (
@@ -68,15 +71,18 @@ export function LiveLogViewer({ runId }: LiveLogViewerProps) {
         )}
         
         {filteredLogs.map((log) => {
+          const level = log.level || log.data?.level || "info"
+          const message = log.message || log.data?.message || ""
+          const source = log.data?.source
+          
           const levelColor = {
             info: "text-slate-300",
             warn: "text-amber-400",
             error: "text-red-400",
             debug: "text-slate-500"
-          }[log.data.level] || "text-slate-300"
+          }[level] || "text-slate-300"
           
           const timestamp = new Date(log.timestamp).toLocaleTimeString()
-          const source = log.data.source
           
           return (
             <div key={log._id} className="flex gap-2">
@@ -86,7 +92,7 @@ export function LiveLogViewer({ runId }: LiveLogViewerProps) {
                   {source}
                 </span>
               )}
-              <span className={levelColor}>{log.data.message}</span>
+              <span className={levelColor}>{message}</span>
             </div>
           )
         })}

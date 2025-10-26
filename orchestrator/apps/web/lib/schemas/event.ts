@@ -8,9 +8,9 @@ export const EventZ = z.object({
   data: z.record(z.unknown()),
   source: z.string(),
   seq: z.number().int().optional(),
-  message: z.string().optional(),
+  message: z.string().nullable().optional(),
   payload: z.record(z.unknown()).optional(),
-  level: z.enum(["info", "warn", "error"]).optional(),
+  level: z.enum(["info", "warn", "error"]).nullable().optional(),
   seed: z.boolean().optional()
 })
 

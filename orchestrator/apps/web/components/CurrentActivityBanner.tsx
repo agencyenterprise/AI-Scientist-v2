@@ -31,7 +31,8 @@ export function CurrentActivityBanner({ runId }: CurrentActivityBannerProps) {
   }
 
   const latest = data?.items?.[0]
-  if (!latest?.message) {
+  const message = latest?.message || (latest?.data as any)?.message
+  if (!message) {
     return (
       <div className="mb-4 rounded-lg border border-slate-700/50 bg-slate-900/30 p-4">
         <div className="flex items-center gap-2">
@@ -43,8 +44,7 @@ export function CurrentActivityBanner({ runId }: CurrentActivityBannerProps) {
   }
 
   // Determine color based on message content
-  const message = latest.message || ""
-  const level = (latest.data as any)?.level || "info"
+  const level = latest.level || (latest.data as any)?.level || "info"
   
   let colorClasses = {
     border: "border-sky-800/50",

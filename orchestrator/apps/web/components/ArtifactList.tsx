@@ -27,7 +27,10 @@ export function ArtifactList({ runId, artifacts }: { runId: string; artifacts: A
     })
   }
 
-  if (artifacts.length === 0) {
+  // Filter out .png files since they're already shown in the plots section
+  const nonImageArtifacts = artifacts.filter(artifact => !artifact.key.toLowerCase().endsWith('.png'))
+
+  if (nonImageArtifacts.length === 0) {
     return <p className="text-sm text-slate-500">No artifacts yet.</p>
   }
 
@@ -35,7 +38,7 @@ export function ArtifactList({ runId, artifacts }: { runId: string; artifacts: A
     <div className="space-y-3">
       {error && <p className="text-sm text-rose-400">{error}</p>}
       <ul className="space-y-2">
-        {artifacts.map((artifact) => (
+        {nonImageArtifacts.map((artifact) => (
           <li
             key={artifact._id}
             className="flex items-center justify-between rounded border border-slate-800 bg-slate-900/40 px-4 py-3 text-sm"

@@ -33,17 +33,27 @@ export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
     }
   }
 
-  await createEvent({
+  const eventDoc: any = {
     _id: event.id,
     runId,
     type: event.type,
     data: event.data,
     source: event.source,
     timestamp: new Date(event.time),
-    seq: eventSeq,
-    message: event.type === "ai.run.log" ? event.data.message : undefined,
-    level: event.type === "ai.run.log" ? event.data.level : undefined
-  })
+    seq: eventSeq
+  }
+  
+  // Only add message and level for log events
+  if (event.type === "ai.run.log") {
+    if (event.data.message) {
+      eventDoc.message = event.data.message
+    }
+    if (event.data.level) {
+      eventDoc.level = event.data.level
+    }
+  }
+  
+  await createEvent(eventDoc)
 
   try {
     await handleEventByType(event, runId, eventSeq)
