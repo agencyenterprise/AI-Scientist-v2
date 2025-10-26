@@ -842,35 +842,54 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 print(f"   Found {len(pdf_files)} PDF file(s): {pdf_files}")
                 
                 if pdf_files:
-                    pdf_path = os.path.join(idea_dir, pdf_files[0])
-                    
-                    # Get PDF file size
-                    pdf_size_bytes = os.path.getsize(pdf_path)
-                    pdf_size_mb = pdf_size_bytes / (1024 * 1024)
-                    event_emitter.log(run_id, f"Generated PDF: {pdf_files[0]} ({pdf_size_mb:.2f} MB)", "info", "Stage_3")
-                    
-                    # Create local backup directory and save PDF copy
+                    # Upload ALL PDFs (reflections and final paper)
+                    import shutil
                     backup_dir = Path("local_pdf_backups")
                     backup_dir.mkdir(exist_ok=True)
-                    backup_filename = f"{run_id}_{pdf_files[0]}"
-                    backup_path = backup_dir / backup_filename
                     
-                    print(f"   💾 Saving local backup: {backup_path}")
-                    import shutil
-                    shutil.copy2(pdf_path, backup_path)
-                    print(f"   ✓ Local backup saved")
-                    event_emitter.log(run_id, f"Local backup saved: {backup_path}", "info", "Stage_3")
+                    # Determine if a dedicated final PDF exists
+                    base_name = os.path.basename(idea_dir)
+                    has_named_final = any("final" in name.lower() for name in pdf_files)
                     
-                    print(f"   Uploading paper: {pdf_files[0]}")
-                    event_emitter.log(run_id, f"Uploading paper to artifact storage", "info", "Stage_3")
-                    upload_result = upload_artifact(run_id, pdf_path, "paper")
-                    
-                    if upload_result:
-                        event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_files[0]}")
-                        event_emitter.log(run_id, "Paper uploaded successfully", "info", "Stage_3")
-                    else:
-                        print(f"⚠️ Paper upload failed but local backup exists at {backup_path}")
-                        event_emitter.log(run_id, f"Paper upload failed, but backup exists at {backup_path}", "warning", "Stage_3")
+                    for pdf_file in pdf_files:
+                        pdf_path = os.path.join(idea_dir, pdf_file)
+                        
+                        # Get PDF file size
+                        pdf_size_bytes = os.path.getsize(pdf_path)
+                        pdf_size_mb = pdf_size_bytes / (1024 * 1024)
+                        
+                        # Determine artifact kind and whether this is the final paper
+                        name_lower = pdf_file.lower()
+                        is_final = ("final" in name_lower) or (
+                            not has_named_final and pdf_file == f"{base_name}.pdf"
+                        )
+                        if "reflection" in name_lower and not is_final:
+                            kind = "reflection"
+                        else:
+                            kind = "paper"
+                        
+                        event_emitter.log(run_id, f"Generated PDF: {pdf_file} ({pdf_size_mb:.2f} MB)", "info", "Stage_3")
+                        
+                        # Create local backup
+                        backup_filename = f"{run_id}_{pdf_file}"
+                        backup_path = backup_dir / backup_filename
+                        
+                        print(f"   💾 Saving local backup: {backup_path}")
+                        shutil.copy2(pdf_path, backup_path)
+                        print(f"   ✓ Local backup saved")
+                        event_emitter.log(run_id, f"Local backup saved: {backup_path}", "info", "Stage_3")
+                        
+                        print(f"   Uploading {kind}: {pdf_file}")
+                        event_emitter.log(run_id, f"Uploading {kind} to artifact storage", "info", "Stage_3")
+                        upload_result = upload_artifact(run_id, pdf_path, kind)
+                        
+                        if upload_result:
+                            if is_final:
+                                event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_file}")
+                            event_emitter.log(run_id, f"{kind.capitalize()} uploaded successfully: {pdf_file}", "info", "Stage_3")
+                        else:
+                            print(f"⚠️ {kind.capitalize()} upload failed but local backup exists at {backup_path}")
+                            event_emitter.log(run_id, f"{kind.capitalize()} upload failed, but backup exists at {backup_path}", "warning", "Stage_3")
                 else:
                     print(f"⚠️ No PDF files found in {idea_dir} after successful writeup!")
                     event_emitter.log(run_id, "No PDF found after writeup", "error", "Stage_3")
@@ -931,21 +950,48 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 )
                 
                 # Extract verdict and score from review if available
-                verdict = "pass"  # default
-                scores = {"overall": 0.75}  # default
+                verdict = "fail"  # default to fail for safety
+                scores = {}
                 
                 if isinstance(review, dict):
-                    # Try to extract verdict from review
-                    if "verdict" in review:
-                        verdict = review["verdict"]
-                    elif "decision" in review:
-                        verdict = review["decision"]
-                    
-                    # Try to extract scores from review
+                    # Extract scores first
                     if "scores" in review:
                         scores = review["scores"]
                     elif "score" in review:
                         scores = {"overall": review["score"]}
+                    
+                    # Extract numeric scores for decision logic
+                    overall_score = review.get("Overall")
+                    
+                    # Try to extract verdict from review (case-insensitive)
+                    decision = None
+                    if "verdict" in review:
+                        decision = review["verdict"]
+                    elif "decision" in review:
+                        decision = review["decision"]
+                    elif "Decision" in review:
+                        decision = review["Decision"]
+                    
+                    # Convert decision to pass/fail
+                    if decision:
+                        decision_lower = str(decision).lower()
+                        if decision_lower in ["accept", "pass"]:
+                            verdict = "pass"
+                        elif decision_lower in ["reject", "fail"]:
+                            verdict = "fail"
+                    
+                    # Override with score-based logic if Overall score exists
+                    # NeurIPS scale: 1-10 where 6+ is accept, <6 is reject
+                    if overall_score is not None:
+                        try:
+                            score_value = float(overall_score)
+                            if score_value >= 6:
+                                verdict = "pass"
+                            else:
+                                verdict = "fail"
+                            event_emitter.log(run_id, f"Overall score: {score_value}/10 → verdict: {verdict}", "info", "Stage_4")
+                        except (ValueError, TypeError):
+                            pass
                     
                     # Log individual scores if available
                     if isinstance(scores, dict):
@@ -1250,52 +1296,66 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
         })
         
         pdf_files = list(exp_dir.glob("*.pdf"))
-        pdf_files = [f for f in pdf_files if "reflection" not in f.name.lower()]
         
         if pdf_files:
-            pdf_file = pdf_files[0]
-            
-            # Create local backup directory and save PDF copy
+            # Upload ALL PDFs (reflections and final paper)
+            import shutil
             backup_dir = Path("local_pdf_backups")
             backup_dir.mkdir(exist_ok=True)
-            backup_filename = f"{run_id}_{pdf_file.name}"
-            backup_path = backup_dir / backup_filename
             
-            emit_event("ai.run.log", {
-                "run_id": run_id,
-                "level": "info",
-                "message": f"💾 Saving local backup: {backup_path}",
-                "source": "writeup_retry"
-            })
+            # Determine if a dedicated final PDF exists
+            base_name = exp_dir.name
+            has_named_final = any("final" in f.name.lower() for f in pdf_files)
             
-            import shutil
-            shutil.copy2(str(pdf_file), str(backup_path))
-            print(f"   ✓ Local backup saved: {backup_path}")
-            
-            emit_event("ai.run.log", {
-                "run_id": run_id,
-                "level": "info",
-                "message": f"📤 Uploading paper artifact: {pdf_file.name}",
-                "source": "writeup_retry"
-            })
-            
-            upload_result = upload_artifact(run_id, str(pdf_file), "paper")
-            
-            if upload_result:
+            for pdf_file in pdf_files:
+                backup_filename = f"{run_id}_{pdf_file.name}"
+                backup_path = backup_dir / backup_filename
+                
+                # Determine artifact kind and whether this is the final paper
+                name_lower = pdf_file.name.lower()
+                is_final = ("final" in name_lower) or (
+                    not has_named_final and pdf_file.name == f"{base_name}.pdf"
+                )
+                if "reflection" in name_lower and not is_final:
+                    kind = "reflection"
+                else:
+                    kind = "paper"
+                
                 emit_event("ai.run.log", {
                     "run_id": run_id,
                     "level": "info",
-                    "message": "✅ Paper uploaded successfully",
+                    "message": f"💾 Saving local backup: {backup_path}",
                     "source": "writeup_retry"
                 })
-                event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_file.name}")
-            else:
+                
+                shutil.copy2(str(pdf_file), str(backup_path))
+                print(f"   ✓ Local backup saved: {backup_path}")
+                
                 emit_event("ai.run.log", {
                     "run_id": run_id,
-                    "level": "warn",
-                    "message": f"⚠️  Failed to upload paper but local backup exists at {backup_path}",
+                    "level": "info",
+                    "message": f"📤 Uploading {kind} artifact: {pdf_file.name}",
                     "source": "writeup_retry"
                 })
+                
+                upload_result = upload_artifact(run_id, str(pdf_file), kind)
+                
+                if upload_result:
+                    emit_event("ai.run.log", {
+                        "run_id": run_id,
+                        "level": "info",
+                        "message": f"✅ {kind.capitalize()} uploaded successfully: {pdf_file.name}",
+                        "source": "writeup_retry"
+                    })
+                    if is_final:
+                        event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_file.name}")
+                else:
+                    emit_event("ai.run.log", {
+                        "run_id": run_id,
+                        "level": "warn",
+                        "message": f"⚠️  Failed to upload {kind} but local backup exists at {backup_path}",
+                        "source": "writeup_retry"
+                    })
         else:
             print(f"⚠️  No PDF files found in {exp_dir} after successful writeup!")
             emit_event("ai.run.log", {
