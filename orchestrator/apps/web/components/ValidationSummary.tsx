@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import type { Validation } from "@/lib/schemas/validation"
 
 export function ValidationSummary({ auto, human }: { auto?: Validation | null; human?: Validation | null }) {
@@ -160,6 +160,68 @@ function ValidationModal({
   const hasQuantitative = Object.keys(quantitativeData).length > 0
   const hasQualitative = Object.keys(qualitativeData).length > 0
 
+  // Recursively render arbitrary JSON values (strings, numbers, arrays, objects)
+  function renderValue(value: any): ReactNode {
+    if (value === null || value === undefined) {
+      return <span className="text-slate-500">None</span>
+    }
+    const t = typeof value
+    if (t === 'string' || t === 'number' || t === 'boolean') {
+      return <span className="whitespace-pre-wrap break-words">{String(value)}</span>
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return <span className="text-slate-500">Empty</span>
+      }
+      const isPrimitiveArray = value.every(v => {
+        const tv = typeof v
+        return tv === 'string' || tv === 'number' || tv === 'boolean'
+      })
+      if (isPrimitiveArray) {
+        return (
+          <ul className="list-disc pl-5 space-y-1">
+            {value.map((v, idx) => (
+              <li key={idx} className="whitespace-pre-wrap break-words">{String(v)}</li>
+            ))}
+          </ul>
+        )
+      }
+      return (
+        <div className="space-y-2">
+          {value.map((v, idx) => (
+            <div key={idx} className="rounded border border-slate-800/60 bg-slate-950/40 p-2">
+              {renderValue(v)}
+            </div>
+          ))}
+        </div>
+      )
+    }
+    if (t === 'object') {
+      const entries = Object.entries(value as Record<string, any>)
+      if (entries.length === 0) {
+        return <span className="text-slate-500">Empty</span>
+      }
+      return (
+        <div className="space-y-2">
+          {entries.map(([k, v]) => (
+            <div key={k} className="rounded border border-slate-800/60 bg-slate-950/40 p-2">
+              <div className="text-xs font-medium text-slate-400">{k}</div>
+              <div className="mt-1 text-sm text-slate-300">{renderValue(v)}</div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    // Fallback
+    try {
+      return (
+        <span className="whitespace-pre-wrap break-words">{JSON.stringify(value)}</span>
+      )
+    } catch {
+      return <span className="whitespace-pre-wrap break-words">{String(value)}</span>
+    }
+  }
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
@@ -251,11 +313,12 @@ function ValidationModal({
               <div className="space-y-3">
                 {Object.entries(qualitativeData).map(([key, value]) => {
                   const isExpanded = expandedSections.has(key)
-                  const stringValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-                  const isLong = stringValue.length > 300
-                  const displayValue = isLong && !isExpanded 
-                    ? stringValue.slice(0, 300) + '...' 
-                    : stringValue
+                  const isString = typeof value === 'string'
+                  const rawString = isString ? (value as string) : ''
+                  const isLong = isString && rawString.length > 300
+                  const displayString = isLong && !isExpanded
+                    ? rawString.slice(0, 300) + '...'
+                    : rawString
 
                   return (
                     <div key={key} className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
@@ -270,8 +333,12 @@ function ValidationModal({
                           </button>
                         )}
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-300">
-                        {displayValue}
+                      <div className="mt-2 text-sm text-slate-300">
+                        {isString ? (
+                          <span className="whitespace-pre-wrap break-words">{displayString}</span>
+                        ) : (
+                          renderValue(value)
+                        )}
                       </div>
                     </div>
                   )
