@@ -138,27 +138,33 @@ def signal_handler(signum, frame):
     
     try:
         if CURRENT_RUN_ID:
-            print(f"Marking run {CURRENT_RUN_ID} as CANCELLED...")
             from pymongo import MongoClient
             client = MongoClient(MONGODB_URL)
             db = client['ai-scientist']
-            db['runs'].update_one(
-                {'_id': CURRENT_RUN_ID},
-                {'$set': {
-                    'status': 'CANCELLED',
-                    'cancelledAt': datetime.utcnow()
-                }}
-            )
             
-            emit_event("ai.run.cancelled", {
-                "run_id": CURRENT_RUN_ID,
-                "reason": f"Worker received {sig_name}",
-                "stage": CURRENT_STAGE or "unknown"
-            })
-            emitter.flush()
-            print(f"✓ Run marked as CANCELLED")
+            # Check current status - don't cancel if already completed/failed
+            run = db['runs'].find_one({'_id': CURRENT_RUN_ID})
+            if run and run.get('status') in ['COMPLETED', 'FAILED']:
+                print(f"Run {CURRENT_RUN_ID} already {run.get('status')}, not canceling")
+            else:
+                print(f"Marking run {CURRENT_RUN_ID} as CANCELED...")
+                db['runs'].update_one(
+                    {'_id': CURRENT_RUN_ID},
+                    {'$set': {
+                        'status': 'CANCELED',
+                        'canceledAt': datetime.utcnow()
+                    }}
+                )
+                
+                emit_event("ai.run.canceled", {
+                    "run_id": CURRENT_RUN_ID,
+                    "reason": f"Worker received {sig_name}",
+                    "stage": CURRENT_STAGE or "unknown"
+                })
+                emitter.flush()
+                print(f"✓ Run marked as CANCELED")
     except Exception as e:
-        print(f"Failed to mark run as cancelled: {e}")
+        print(f"Failed to mark run as canceled: {e}")
     
     sys.exit(0)
 
@@ -214,25 +220,38 @@ class StageContext:
             pass
         
         # Emit stage completed event
-        # TODO: Consider using batched emitter instead of CloudEventEmitter for reliability
-        # CloudEventEmitter sends immediately and failures may be lost
+        # Try both CloudEventEmitter and batched emitter for maximum reliability
         success = event_emitter.stage_completed(
             self.run_id,
             self.stage,
             int(duration_s)
         )
         
-        if success:
+        # Also send via batched emitter as backup
+        emit_event("ai.run.stage_completed", {
+            "run_id": self.run_id,
+            "stage": self.stage,
+            "duration_s": int(duration_s)
+        })
+        emitter.flush()
+        
+        # Update stage in MongoDB directly to ensure it's marked as completed
+        try:
+            client = MongoClient(MONGODB_URL)
+            db = client['ai-scientist']
+            db['stages'].update_one(
+                {'runId': self.run_id, 'name': self.stage},
+                {'$set': {
+                    'status': 'COMPLETED',
+                    'completedAt': datetime.utcnow(),
+                    'progress': 1.0
+                }}
+            )
             print(f"✓ Stage {self.stage} completed in {int(duration_s)}s")
-        else:
-            print(f"⚠️ Failed to emit stage_completed event for {self.stage}")
-            # Also try with batched emitter as fallback
-            emit_event("ai.run.stage_completed", {
-                "run_id": self.run_id,
-                "stage": self.stage,
-                "duration_s": int(duration_s)
-            })
-            emitter.flush()
+        except Exception as e:
+            print(f"⚠️ Failed to update stage status in MongoDB: {e}")
+            if not success:
+                print(f"⚠️ Also failed to emit stage_completed event")
         
         return False
 
@@ -870,8 +889,17 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                         
                         event_emitter.log(run_id, f"Generated PDF: {pdf_file} ({pdf_size_mb:.2f} MB)", "info", "Stage_3")
                         
-                        # Create local backup
-                        backup_filename = f"{run_id}_{pdf_file}"
+                        # Create local backup with shorter filename to avoid filesystem limits (255 chars)
+                        # Use hash of original filename to keep it short while unique
+                        import hashlib
+                        file_hash = hashlib.md5(pdf_file.encode()).hexdigest()[:8]
+                        # Extract just the suffix if present (e.g., "reflection_final_page_limit")
+                        if pdf_file != f"{base_name}.pdf":
+                            # Get suffix after base_name
+                            suffix = pdf_file.replace(f"{base_name}", "").replace(".pdf", "")
+                            backup_filename = f"{run_id}_{file_hash}{suffix}.pdf"
+                        else:
+                            backup_filename = f"{run_id}_paper.pdf"
                         backup_path = backup_dir / backup_filename
                         
                         print(f"   💾 Saving local backup: {backup_path}")
@@ -1308,7 +1336,14 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
             has_named_final = any("final" in f.name.lower() for f in pdf_files)
             
             for pdf_file in pdf_files:
-                backup_filename = f"{run_id}_{pdf_file.name}"
+                # Create shorter backup filename to avoid filesystem limits (255 chars)
+                import hashlib
+                file_hash = hashlib.md5(pdf_file.name.encode()).hexdigest()[:8]
+                if pdf_file.name != f"{base_name}.pdf":
+                    suffix = pdf_file.name.replace(f"{base_name}", "").replace(".pdf", "")
+                    backup_filename = f"{run_id}_{file_hash}{suffix}.pdf"
+                else:
+                    backup_filename = f"{run_id}_paper.pdf"
                 backup_path = backup_dir / backup_filename
                 
                 # Determine artifact kind and whether this is the final paper
