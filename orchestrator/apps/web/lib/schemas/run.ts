@@ -26,19 +26,25 @@ const StageProgressZ = z.preprocess(
     // Handle null/undefined
     if (!val || typeof val !== 'object' || !val.name) return val
     
+    // Defensive: Clamp progress to [0, 1] to prevent crashes from backend bugs
+    let processedVal = { ...val }
+    if (typeof processedVal.progress === 'number') {
+      processedVal.progress = Math.max(0, Math.min(processedVal.progress, 1))
+    }
+    
     // If it's already canonical, keep it
-    if (STAGES.includes(val.name as any)) {
-      return val
+    if (STAGES.includes(processedVal.name as any)) {
+      return processedVal
     }
     
     // Try to normalize from display name
-    const normalized = displayToCanonicalStage[val.name]
+    const normalized = displayToCanonicalStage[processedVal.name]
     if (normalized) {
-      return { ...val, name: normalized }
+      return { ...processedVal, name: normalized }
     }
     
     // Return as-is
-    return val
+    return processedVal
   },
   z
     .object({

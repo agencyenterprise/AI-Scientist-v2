@@ -63,18 +63,30 @@ export const StageStartedDataZ = z.object({
   desc: z.string().nullable().optional()
 })
 
-export const StageProgressDataZ = z.object({
-  run_id: z.string(),
-  stage: z.enum(STAGES),
-  progress: z.number().min(0).max(1),
-  eta_s: z.number().nullable().optional(),
-  iteration: z.number().int().optional(),
-  max_iterations: z.number().int().optional(),
-  good_nodes: z.number().int().optional(),
-  buggy_nodes: z.number().int().optional(),
-  total_nodes: z.number().int().optional(),
-  best_metric: z.string().nullable().optional()
-})
+export const StageProgressDataZ = z.preprocess(
+  (val: any) => {
+    // Defensive: Clamp progress to [0, 1] to prevent crashes from backend bugs
+    if (val && typeof val === 'object' && typeof val.progress === 'number') {
+      return {
+        ...val,
+        progress: Math.max(0, Math.min(val.progress, 1))
+      }
+    }
+    return val
+  },
+  z.object({
+    run_id: z.string(),
+    stage: z.enum(STAGES),
+    progress: z.number().min(0).max(1),
+    eta_s: z.number().nullable().optional(),
+    iteration: z.number().int().optional(),
+    max_iterations: z.number().int().optional(),
+    good_nodes: z.number().int().optional(),
+    buggy_nodes: z.number().int().optional(),
+    total_nodes: z.number().int().optional(),
+    best_metric: z.string().nullable().optional()
+  })
+)
 
 export const StageMetricDataZ = z.object({
   run_id: z.string(),
