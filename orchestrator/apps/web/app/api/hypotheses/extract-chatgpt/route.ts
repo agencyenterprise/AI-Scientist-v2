@@ -48,10 +48,10 @@ async function structureHypothesisWithLLM(conversationText: string): Promise<{
     apiKey: env.OPENAI_API_KEY
   })
 
-  // Use full conversation - GPT-5 can handle large contexts
+  // Use full conversation - GPT-4o can handle large contexts
   // No truncation needed
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
