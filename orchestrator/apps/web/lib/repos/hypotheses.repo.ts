@@ -49,3 +49,16 @@ export async function findHypothesesByIds(ids: string[]): Promise<Hypothesis[]> 
     .toArray()
   return docs.map((doc) => HypothesisZ.parse(doc))
 }
+
+export async function updateHypothesis(
+  id: string,
+  updates: Partial<Hypothesis>
+): Promise<Hypothesis | null> {
+  const db = await getDb()
+  const result = await db.collection<Hypothesis>(COLLECTION).findOneAndUpdate(
+    { _id: id },
+    { $set: { ...updates, updatedAt: new Date() } },
+    { returnDocument: "after" }
+  )
+  return result ? HypothesisZ.parse(result) : null
+}

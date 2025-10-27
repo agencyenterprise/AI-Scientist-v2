@@ -219,10 +219,22 @@ function HypothesisCard({
     ? hypothesis.idea.substring(0, 150) + "..." 
     : hypothesis.idea
 
+  const isExtracting = hypothesis.extractionStatus === "extracting"
+
   return (
     <li className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text-slate-100 flex-1">{hypothesis.title}</div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-slate-100">{hypothesis.title}</div>
+            {isExtracting && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">
+                <span className="animate-pulse">●</span>
+                Extracting...
+              </span>
+            )}
+          </div>
+        </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="text-slate-400 hover:text-slate-200 transition-colors"

@@ -18,8 +18,8 @@ export const STAGES = ["Stage_1", "Stage_2", "Stage_3", "Stage_4"] as const
 export type StageName = (typeof STAGES)[number]
 
 export const STAGE_DESCRIPTIONS: Record<StageName, string> = {
-  Stage_1: "Preliminary Investigation",
-  Stage_2: "Baseline Tuning",
-  Stage_3: "Research Agenda Execution",
-  Stage_4: "Ablation Studies"
+  Stage_1: "Experiments (Initial, Baseline, Creative, Ablations)",
+  Stage_2: "Plot Aggregation",
+  Stage_3: "Paper Generation",
+  Stage_4: "Auto-Validation"
 }

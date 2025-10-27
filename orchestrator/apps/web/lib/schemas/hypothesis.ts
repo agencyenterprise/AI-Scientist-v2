@@ -8,7 +8,9 @@ export const HypothesisZ = z.object({
   createdBy: z.string().min(1),
   updatedAt: z.coerce.date().optional(),
   seed: z.boolean().optional(),
-  ideaJson: z.record(z.any()).optional()
+  ideaJson: z.record(z.any()).optional(),
+  chatGptUrl: z.string().optional(),
+  extractionStatus: z.enum(["pending", "extracting", "completed", "failed"]).optional()
 })
 
 export type Hypothesis = z.infer<typeof HypothesisZ>

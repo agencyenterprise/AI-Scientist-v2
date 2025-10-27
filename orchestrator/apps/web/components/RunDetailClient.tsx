@@ -51,10 +51,22 @@ function logChanges(prev: RunDetail | undefined, current: RunDetail) {
     changes.push(`Stage: ${prev.run.currentStage?.name || "none"} → ${current.run.currentStage?.name || "none"}`)
   }
 
+  // Log substage changes
+  if (prev.run.currentStage?.substage !== current.run.currentStage?.substage) {
+    changes.push(`Substage: ${prev.run.currentStage?.substage || "none"} → ${current.run.currentStage?.substage || "none"}`)
+  }
+
   if (prev.run.currentStage?.progress !== current.run.currentStage?.progress) {
     const prevProg = prev.run.currentStage?.progress || 0
     const currProg = current.run.currentStage?.progress || 0
     changes.push(`Progress: ${(prevProg * 100).toFixed(0)}% → ${(currProg * 100).toFixed(0)}%`)
+  }
+
+  // Log node count changes
+  const prevNodes = prev.run.currentStage?.goodNodes || 0
+  const currNodes = current.run.currentStage?.goodNodes || 0
+  if (prevNodes !== currNodes) {
+    changes.push(`Nodes: ${prevNodes} → ${currNodes}`)
   }
 
   if (prev.stages.length !== current.stages.length) {
@@ -267,10 +279,16 @@ function toStageProgress(name: StageName, detail: RunDetail) {
   // Show actual status from stage document or derive from run state
   const status = stage?.status ?? deriveStatus(name, detail.run.status, current?.name)
   
+  // Include substage info if this is the current stage
+  const substage = current?.name === name ? current.substage : undefined
+  const substageFull = current?.name === name ? current.substageFull : undefined
+  
   return {
     name,
     progress,
-    status
+    status,
+    substage,
+    substageFull
   }
 }
 

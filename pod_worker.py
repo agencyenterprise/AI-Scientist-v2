@@ -6,6 +6,7 @@ import hashlib
 import traceback
 import requests
 import socket
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -22,6 +23,52 @@ CURRENT_RUN_ID: Optional[str] = None
 CURRENT_STAGE: Optional[str] = None
 
 event_emitter = CloudEventEmitter(CONTROL_PLANE_URL, POD_ID)
+
+
+def find_best_pdf_for_review(pdf_files):
+    """
+    Intelligently select the best PDF for review from a list of PDFs.
+    Prioritizes: final PDFs > highest numbered reflections > any reflection > any PDF
+    
+    Args:
+        pdf_files: List of PDF filenames (just filenames, not full paths)
+    
+    Returns:
+        str: The filename of the best PDF to review
+    """
+    if not pdf_files:
+        return None
+    
+    # Separate reflection PDFs from others
+    reflection_pdfs = [f for f in pdf_files if "reflection" in f.lower()]
+    
+    if reflection_pdfs:
+        # First check if there's a final version
+        final_pdfs = [f for f in reflection_pdfs if "final" in f.lower()]
+        if final_pdfs:
+            return final_pdfs[0]
+        
+        # Try to find numbered reflections and pick the highest
+        reflection_nums = []
+        for f in reflection_pdfs:
+            match = re.search(r"reflection[_.]?(\d+)", f, re.IGNORECASE)
+            if match:
+                reflection_nums.append((int(match.group(1)), f))
+        
+        if reflection_nums:
+            # Get the file with the highest reflection number
+            highest_reflection = max(reflection_nums, key=lambda x: x[0])
+            return highest_reflection[1]
+        else:
+            # Fall back to the first reflection PDF if no numbers found
+            return reflection_pdfs[0]
+    
+    # No reflection PDFs, use any PDF (prefer ones without "draft" in name)
+    non_draft_pdfs = [f for f in pdf_files if "draft" not in f.lower()]
+    if non_draft_pdfs:
+        return non_draft_pdfs[0]
+    
+    return pdf_files[0]
 
 
 class EventEmitter:
@@ -197,16 +244,12 @@ class StageContext:
         duration_s = time.time() - self.start_time if self.start_time else 0
         
         if exc_type is not None:
-            emit_event("ai.run.failed", {
-                "run_id": self.run_id,
-                "stage": self.stage,
-                "code": exc_type.__name__,
-                "message": str(exc_value),
-                "traceback": "".join(traceback.format_exception(exc_type, exc_value, exc_traceback)),
-                "retryable": is_retryable(exc_type)
-            })
-            emitter.flush()
-            return False
+            # Don't emit failure event here - let the outer exception handler do it
+            # This prevents premature "failed" status when exceptions are caught and handled
+            # The top-level try-catch in run_experiment_pipeline will emit the failure event
+            # if the experiment truly fails
+            print(f"⚠️ Exception in stage {self.stage}: {exc_type.__name__}: {exc_value}", file=sys.stderr)
+            return False  # Re-raise the exception
         
         # Save stage duration
         try:
@@ -669,34 +712,38 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     
                     # Map internal BFTS stage names to user-friendly names
                     # Format from perform_experiments_bfts: "1_initial", "2_baseline", "3_creative", "4_ablation"
-                    stage_display_names = {
-                        "1_initial": "Stage 1: Initial Implementation",
-                        "2_baseline": "Stage 2: Baseline Tuning",
-                        "3_creative": "Stage 3: Creative Research",
-                        "4_ablation": "Stage 4: Ablation Studies",
+                    substage_display_names = {
+                        "1_initial": "Initial Implementation",
+                        "2_baseline": "Baseline Tuning",
+                        "3_creative": "Creative Research",
+                        "4_ablation": "Ablation Studies",
                         # Legacy formats just in case
-                        "stage_1": "Stage 1: Initial Implementation",
-                        "stage_2": "Stage 2: Baseline Tuning",
-                        "stage_3": "Stage 3: Creative Research",
-                        "stage_4": "Stage 4: Ablation Studies"
+                        "stage_1": "Initial Implementation",
+                        "stage_2": "Baseline Tuning",
+                        "stage_3": "Creative Research",
+                        "stage_4": "Ablation Studies"
                     }
                     
-                    display_name = stage_display_names.get(internal_stage, f"Stage: {internal_stage}")
+                    substage_name = substage_display_names.get(internal_stage, internal_stage)
                     
-                    print(f"🔄 Updating UI: {display_name} - {progress*100:.1f}% ({good_nodes}/{total_nodes} nodes)")
+                    print(f"🔄 Updating UI: Stage_1 → {substage_name} - {progress*100:.1f}% ({good_nodes}/{total_nodes} nodes)")
                     
+                    # Keep Stage_1 as main stage, show Sakana stage as substage
                     db['runs'].update_one(
                         {"_id": run_id},
                         {"$set": {
                             "currentStage": {
-                                "name": display_name,
+                                "name": "Stage_1",  # Keep UI-compatible stage name
                                 "progress": progress,
                                 "iteration": iteration,
                                 "maxIterations": max_iterations,
                                 "goodNodes": good_nodes,
                                 "buggyNodes": buggy_nodes,
                                 "totalNodes": total_nodes,
-                                "bestMetric": data.get("best_metric")
+                                "bestMetric": data.get("best_metric"),
+                                # Add substage info for UI to display
+                                "substage": substage_name,
+                                "substageFull": f"{substage_name} ({good_nodes}/{total_nodes} nodes)"
                             }
                         }}
                     )
@@ -951,8 +998,11 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             from ai_scientist.llm import create_client
             
             if pdf_files:
-                pdf_path = os.path.join(idea_dir, pdf_files[0])
-                event_emitter.log(run_id, f"Loading paper from: {pdf_files[0]}", "info", "Stage_4")
+                # Smart PDF selection: prefer final > highest numbered > any reflection
+                pdf_to_review = find_best_pdf_for_review(pdf_files)
+                pdf_path = os.path.join(idea_dir, pdf_to_review)
+                event_emitter.log(run_id, f"Loading paper from: {pdf_to_review}", "info", "Stage_4")
+                print(f"📄 Selected PDF for review: {pdf_to_review}")
                 
                 db['runs'].update_one(
                     {"_id": run_id},
@@ -1074,6 +1124,45 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         print("\n📋 Copying best solutions to experiment root...")
         copy_best_solutions_to_root(idea_dir)
         
+        # Upload best code files as artifacts
+        print(f"\n📦 Uploading best code artifacts...")
+        code_files_uploaded = 0
+        for stage_num in range(1, 5):  # Stages 1-4
+            code_file = f"best_code_stage_{stage_num}.py"
+            code_path = os.path.join(idea_dir, code_file)
+            
+            if os.path.exists(code_path):
+                print(f"   Uploading {code_file}...")
+                upload_result = upload_artifact(run_id, code_path, "code")
+                
+                if upload_result:
+                    code_files_uploaded += 1
+                    event_emitter.log(run_id, f"Code artifact uploaded: {code_file}", "info", "completion")
+                    print(f"   ✓ {code_file} uploaded")
+                else:
+                    event_emitter.log(run_id, f"Failed to upload {code_file}", "warning", "completion")
+                    print(f"   ⚠️ {code_file} upload failed")
+            else:
+                print(f"   ⊘ {code_file} not found (stage may not have completed)")
+        
+        if code_files_uploaded > 0:
+            print(f"✓ Uploaded {code_files_uploaded} code artifact(s)")
+            event_emitter.log(run_id, f"Uploaded {code_files_uploaded} code artifacts", "info", "completion")
+        else:
+            print(f"⚠️ No code artifacts found to upload")
+            event_emitter.log(run_id, "No code artifacts found", "warning", "completion")
+        
+        # Upload the README explaining the best solutions
+        readme_path = os.path.join(idea_dir, "BEST_SOLUTIONS_README.md")
+        if os.path.exists(readme_path):
+            print(f"\n📄 Uploading code documentation...")
+            upload_result = upload_artifact(run_id, readme_path, "documentation")
+            if upload_result:
+                print(f"   ✓ BEST_SOLUTIONS_README.md uploaded")
+                event_emitter.log(run_id, "Code documentation uploaded", "info", "completion")
+            else:
+                print(f"   ⚠️ Failed to upload README")
+        
         print("\n📦 Archiving experiment artifacts to MinIO...")
         archive_uploaded = False
         try:
@@ -1117,6 +1206,17 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         db = mongo_client['ai-scientist']
         runs_collection = db["runs"]
         
+        # First, emit the failure event before updating the database
+        # This ensures the frontend gets notified immediately
+        event_emitter.run_failed(
+            run_id,
+            CURRENT_STAGE or "unknown",
+            type(e).__name__,
+            str(e),
+            traceback.format_exc()
+        )
+        emitter.flush()
+        
         retry_count = run.get("retryCount", 0)
         max_retries = 0  # NO AUTO-RETRY - Stop and wait for human intervention
         
@@ -1149,15 +1249,6 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             )
             print(f"❌ Run FAILED - requires human intervention")
             print(f"   Error: {type(e).__name__}: {str(e)[:200]}")
-        
-        event_emitter.run_failed(
-            run_id,
-            CURRENT_STAGE or "unknown",
-            type(e).__name__,
-            str(e),
-            traceback.format_exc()
-        )
-        emitter.flush()
         
         # Stop background threads if they were started
         if 'monitor_stop' in locals():

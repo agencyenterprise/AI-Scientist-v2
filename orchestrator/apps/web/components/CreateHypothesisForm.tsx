@@ -46,10 +46,10 @@ export function CreateHypothesisForm() {
       return
     }
 
-    // Extract and structure the conversation
+    // Create hypothesis with background extraction
     setExtracting(true)
     try {
-      const response = await fetch("/api/hypotheses/extract-chatgpt", {
+      const response = await fetch("/api/hypotheses/extract-and-create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url })
@@ -58,17 +58,19 @@ export function CreateHypothesisForm() {
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.error || "Failed to extract ChatGPT conversation")
+        setError(data.error || "Failed to create hypothesis from ChatGPT conversation")
         return
       }
 
-      // Show modal with structured hypothesis
-      setModalTitle(data.title || "")
-      setModalDescription(data.description || data.rawText)
-      setShowModal(true)
-      setError(null)
+      // Clear form and redirect immediately
+      // Extraction continues in background
+      setTitle("")
+      setIdea("")
+      setChatGptUrl("")
+      router.push("/")
+      router.refresh()
     } catch (err) {
-      setError("Network error while extracting conversation")
+      setError("Network error while creating hypothesis")
     } finally {
       setExtracting(false)
     }
