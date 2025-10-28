@@ -365,6 +365,17 @@ class Journal:
     nodes: list[Node] = field(default_factory=list)
     event_callback: callable = field(default=None, kw_only=True, repr=False)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # event callbacks often capture network clients (SSLContext) which are not picklable
+        state["event_callback"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # callbacks are reattached by the manager after restore if needed
+        self.event_callback = None
+
     def __getitem__(self, idx: int) -> Node:
         return self.nodes[idx]
 

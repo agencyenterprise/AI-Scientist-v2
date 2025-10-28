@@ -122,7 +122,9 @@ class Interpreter:
         shutup.mute_warnings()
 
         for key, value in self.env_vars.items():
-            os.environ[key] = value
+            if value is None:
+                continue
+            os.environ[key] = str(value)
 
         os.chdir(str(self.working_dir))
 
