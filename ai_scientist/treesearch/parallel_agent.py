@@ -1209,6 +1209,17 @@ class ParallelAgent:
             "tried_hyperparams": set(),
         }
 
+    def __getstate__(self):
+        """Custom pickle support - exclude unpicklable event_callback for worker processes"""
+        state = self.__dict__.copy()
+        # Remove unpicklable callback (contains SSL contexts from MongoDB/HTTP clients)
+        state['event_callback'] = None
+        return state
+    
+    def __setstate__(self, state):
+        """Restore state after unpickling"""
+        self.__dict__.update(state)
+    
     def _emit_event(self, event_type: str, data: dict):
         if self.event_callback:
             try:

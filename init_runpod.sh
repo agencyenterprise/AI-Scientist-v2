@@ -21,23 +21,6 @@ fi
 echo "Step 4: Sourcing bashrc..."
 source ~/.bashrc
 
-# Step 5: Load environment variables from .env file
-echo "Step 5: Loading environment variables from .env..."
-if [ -f .env ]; then
-    # Safely load environment variables from .env (one line at a time)
-    while IFS= read -r line; do
-        # Skip empty lines and comments
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        # Only export lines that match KEY=value pattern
-        if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-            export "$line"
-        fi
-    done < .env
-    echo "Environment variables loaded from .env"
-else
-    echo "Warning: .env file not found in current directory"
-fi
-
 # Enable HuggingFace fast transfer for faster dataset downloads
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
