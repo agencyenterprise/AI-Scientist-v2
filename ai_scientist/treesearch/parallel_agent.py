@@ -1351,7 +1351,7 @@ class ParallelAgent:
                     best_stage2_plot_code,
                     best_stage3_plot_code,
                     seed_eval,
-                    self.event_callback,
+                    None,
                 )
             )
 
@@ -2257,7 +2257,7 @@ class ParallelAgent:
                     best_stage2_plot_code,
                     best_stage3_plot_code,
                     seed_eval,
-                    self.event_callback,
+                    None,
                 )
             )
 
