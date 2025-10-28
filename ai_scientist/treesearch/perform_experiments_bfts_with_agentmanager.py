@@ -151,10 +151,12 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
             # ALWAYS emit progress - show actual work being done
             # Use total nodes as iteration count so progress shows even when all buggy
             current_iteration = len(journal.nodes)
-            progress = min(current_iteration / stage.max_iterations, 1.0) if stage.max_iterations > 0 else 0
+            progress = max(0.0, min(current_iteration / stage.max_iterations, 1.0)) if stage.max_iterations > 0 else 0.0
             
+            # Map internal BFTS stage names to Stage_1 (all BFTS stages are part of experiments phase)
+            # Internal names like "1_initial_implementation_1_preliminary" → "Stage_1"
             emit_event("ai.run.stage_progress", {
-                "stage": stage.name.split("_")[0] + "_" + stage.name.split("_")[1],
+                "stage": "Stage_1",  # All BFTS substages are part of Stage_1 in the UI
                 "iteration": current_iteration,  # Total nodes attempted
                 "max_iterations": stage.max_iterations,
                 "progress": progress,  # Based on total attempts, not just good ones
@@ -179,7 +181,7 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
             # Emit node completion if we have a latest node
             if latest_node_summary:
                 emit_event("ai.experiment.node_completed", {
-                    "stage": stage.name,
+                    "stage": "Stage_1",  # All BFTS substages are part of Stage_1 in the UI
                     "node_id": latest_node.id if hasattr(latest_node, 'id') else None,
                     "summary": latest_node_summary
                 })

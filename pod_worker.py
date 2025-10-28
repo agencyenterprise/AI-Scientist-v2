@@ -7,6 +7,7 @@ import traceback
 import requests
 import socket
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -18,6 +19,11 @@ from event_emitter import CloudEventEmitter
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "https://ai-scientist-v2-production.up.railway.app")
 MONGODB_URL = os.environ.get("MONGODB_URL", "")
 POD_ID = os.environ.get("RUNPOD_POD_ID", socket.gethostname())
+
+# Git auto-update configuration
+GIT_AUTO_PULL_ENABLED = os.environ.get("GIT_AUTO_PULL_ENABLED", "true").lower() == "true"
+GIT_AUTO_PULL_INTERVAL = int(os.environ.get("GIT_AUTO_PULL_INTERVAL", "60"))  # seconds
+GIT_AUTO_PULL_BRANCH = os.environ.get("GIT_AUTO_PULL_BRANCH", "feat/additions")
 
 CURRENT_RUN_ID: Optional[str] = None
 CURRENT_STAGE: Optional[str] = None
@@ -69,6 +75,90 @@ def find_best_pdf_for_review(pdf_files):
         return non_draft_pdfs[0]
     
     return pdf_files[0]
+
+
+def git_pull():
+    """
+    Pull latest changes from git repository.
+    Returns True if successful, False otherwise.
+    """
+    if not GIT_AUTO_PULL_ENABLED:
+        return True
+    
+    try:
+        # Get current directory (should be the repo root)
+        repo_dir = Path(__file__).parent.absolute()
+        
+        print(f"📥 Pulling latest changes from git ({GIT_AUTO_PULL_BRANCH})...", end=" ", flush=True)
+        
+        # Fetch latest changes
+        result = subprocess.run(
+            ["git", "fetch", "origin", GIT_AUTO_PULL_BRANCH],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            print(f"⚠️  Git fetch failed: {result.stderr.strip()}")
+            return False
+        
+        # Check if there are changes to pull
+        result = subprocess.run(
+            ["git", "rev-list", "--count", f"HEAD..origin/{GIT_AUTO_PULL_BRANCH}"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            print(f"⚠️  Git rev-list failed: {result.stderr.strip()}")
+            return False
+        
+        commits_behind = int(result.stdout.strip())
+        
+        if commits_behind == 0:
+            print("✓ Already up to date")
+            return True
+        
+        # Pull changes
+        result = subprocess.run(
+            ["git", "pull", "origin", GIT_AUTO_PULL_BRANCH],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            print(f"⚠️  Git pull failed: {result.stderr.strip()}")
+            return False
+        
+        print(f"✓ Pulled {commits_behind} new commit(s)")
+        
+        # Check if this file (pod_worker.py) was updated
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"HEAD~{commits_behind}", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if "pod_worker.py" in result.stdout:
+            print("⚠️  pod_worker.py was updated - please restart this worker to use new version")
+            print("   (Worker will continue with current version for now)")
+        
+        return True
+        
+    except subprocess.TimeoutExpired:
+        print("⚠️  Git operation timed out")
+        return False
+    except Exception as e:
+        print(f"⚠️  Git pull error: {e}")
+        return False
 
 
 class EventEmitter:
@@ -704,6 +794,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 try:
                     internal_stage = data.get("stage", "")
                     progress = data.get("progress", 0.0)
+                    # Clamp progress to [0, 1] to prevent validation errors
+                    progress = max(0.0, min(progress, 1.0))
                     iteration = data.get("iteration", 0)
                     max_iterations = data.get("max_iterations", 1)
                     good_nodes = data.get("good_nodes", 0)
@@ -728,24 +820,27 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     
                     print(f"🔄 Updating UI: Stage_1 → {substage_name} - {progress*100:.1f}% ({good_nodes}/{total_nodes} nodes)")
                     
-                    # Keep Stage_1 as main stage, show Sakana stage as substage
+                    # Keep Stage_1 as main stage, optionally show Sakana stage as substage
+                    # Note: Only include substage fields if frontend schema supports them
+                    # This ensures backward compatibility
+                    stage_data = {
+                        "name": "Stage_1",  # Keep UI-compatible stage name
+                        "progress": progress,
+                        "iteration": iteration,
+                        "maxIterations": max_iterations,
+                        "goodNodes": good_nodes,
+                        "buggyNodes": buggy_nodes,
+                        "totalNodes": total_nodes,
+                        "bestMetric": data.get("best_metric")
+                    }
+                    
+                    # TODO: Uncomment when frontend schema is deployed with substage support
+                    # stage_data["substage"] = substage_name
+                    # stage_data["substageFull"] = f"{substage_name} ({good_nodes}/{total_nodes} nodes)"
+                    
                     db['runs'].update_one(
                         {"_id": run_id},
-                        {"$set": {
-                            "currentStage": {
-                                "name": "Stage_1",  # Keep UI-compatible stage name
-                                "progress": progress,
-                                "iteration": iteration,
-                                "maxIterations": max_iterations,
-                                "goodNodes": good_nodes,
-                                "buggyNodes": buggy_nodes,
-                                "totalNodes": total_nodes,
-                                "bestMetric": data.get("best_metric"),
-                                # Add substage info for UI to display
-                                "substage": substage_name,
-                                "substageFull": f"{substage_name} ({good_nodes}/{total_nodes} nodes)"
-                            }
-                        }}
+                        {"$set": {"currentStage": stage_data}}
                     )
                 except Exception as e:
                     print(f"Failed to update currentStage in MongoDB: {e}")
@@ -1552,6 +1647,11 @@ def main():
     print(f"{'='*60}")
     print(f"Pod ID: {POD_ID}")
     print(f"Control Plane: {CONTROL_PLANE_URL}")
+    if GIT_AUTO_PULL_ENABLED:
+        print(f"Git Auto-Pull: Enabled (every {GIT_AUTO_PULL_INTERVAL}s when idle)")
+        print(f"Git Branch: {GIT_AUTO_PULL_BRANCH}")
+    else:
+        print(f"Git Auto-Pull: Disabled")
     print(f"{'='*60}\n")
     
     if not MONGODB_URL:
@@ -1569,19 +1669,48 @@ def main():
     
     print("🔍 Polling for experiments and writeup retries...\n")
     
+    # Track last git pull time for periodic updates during idle
+    last_git_pull_time = time.time()
+    
     while True:
         try:
             run = fetch_next_experiment(mongo_client, POD_ID)
             
             if run:
                 run_experiment_pipeline(run, mongo_client)
-                print("\n🔍 Experiment completed, polling for next task...")
+                print("\n✅ Experiment completed!")
+                
+                # Pull latest code after experiment completes
+                print("🔄 Checking for code updates...")
+                git_pull()
+                
+                # Reset the pull timer
+                last_git_pull_time = time.time()
+                
+                print("\n🔍 Polling for next task...")
             else:
                 writeup_retry = fetch_writeup_retry(mongo_client, POD_ID)
                 if writeup_retry:
                     perform_writeup_retry(writeup_retry, mongo_client)
-                    print("\n🔍 Writeup retry completed, polling for next task...")
+                    print("\n✅ Writeup retry completed!")
+                    
+                    # Pull latest code after writeup completes
+                    print("🔄 Checking for code updates...")
+                    git_pull()
+                    
+                    # Reset the pull timer
+                    last_git_pull_time = time.time()
+                    
+                    print("\n🔍 Polling for next task...")
                 else:
+                    # Check if it's time to pull during idle
+                    current_time = time.time()
+                    time_since_last_pull = current_time - last_git_pull_time
+                    
+                    if GIT_AUTO_PULL_ENABLED and time_since_last_pull >= GIT_AUTO_PULL_INTERVAL:
+                        git_pull()
+                        last_git_pull_time = current_time
+                    
                     print(f"⏱️  No experiments or retries available, waiting 10s...")
                     time.sleep(10)
                 

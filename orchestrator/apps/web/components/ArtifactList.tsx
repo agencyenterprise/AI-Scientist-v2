@@ -38,7 +38,7 @@ export function ArtifactList({ runId, artifacts }: { runId: string; artifacts: A
     <div className="space-y-3">
       {error && <p className="text-sm text-rose-400">{error}</p>}
       <p className="text-xs text-slate-400 italic">
-        Tip: The final paper will have "final" in its filename. Other PDFs are intermediate reflections.
+        Other PDFs are intermediate reflections. The final paper is highlighted above.
       </p>
       <ul className="space-y-2">
         {nonImageArtifacts.map((artifact) => (

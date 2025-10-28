@@ -223,5 +223,9 @@ echo ""
 echo "   If you need to restart later, just run: python pod_worker.py"
 echo "   (no need to source bashrc - it's automatic!)"
 echo ""
-python pod_worker.py
+
+# Use exec to replace this shell process with the Python process
+# This makes pod_worker.py a top-level process, not a subprocess
+# Benefits: proper signal handling, clean process tree, no orphaned shells
+exec python pod_worker.py
 

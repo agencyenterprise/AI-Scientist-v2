@@ -89,6 +89,8 @@ class CloudEventEmitter:
                       iteration: int, max_iterations: int,
                       good_nodes: int, buggy_nodes: int, total_nodes: int,
                       best_metric: Optional[str] = None, eta_s: Optional[int] = None) -> bool:
+        # Clamp progress to [0, 1] to prevent validation errors
+        progress = max(0.0, min(progress, 1.0))
         return self.emit("ai.run.stage_progress", run_id, {
             "stage": stage,
             "progress": progress,
