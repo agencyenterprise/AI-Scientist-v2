@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { CloudEventsEnvelopeZ, validateEventData } from "@/lib/schemas/cloudevents"
+import { CloudEventsEnvelopeZ, validateEventDataWithDetails } from "@/lib/schemas/cloudevents"
 import { processEvent } from "@/lib/services/events.service"
 import { isEventSeen, markEventSeen } from "@/lib/services/deduplication.service"
 import { logger } from "@/lib/logging/logger"
@@ -10,13 +10,23 @@ export async function POST(req: NextRequest) {
 
     const envelopeResult = CloudEventsEnvelopeZ.safeParse(body)
     if (!envelopeResult.success) {
-      logger.warn({ errors: envelopeResult.error.errors }, "Invalid CloudEvents envelope")
+      const firstError = envelopeResult.error.errors[0]
+      const errorDetails = {
+        path: firstError?.path?.join('.') || 'unknown',
+        message: firstError?.message || 'Invalid event format',
+        received: firstError?.received
+      }
+      logger.warn({ 
+        errors: envelopeResult.error.errors,
+        body: JSON.stringify(body).slice(0, 500)
+      }, "Invalid CloudEvents envelope")
       return NextResponse.json(
         {
           type: "about:blank",
           title: "Invalid CloudEvents envelope",
           status: 422,
-          detail: envelopeResult.error.errors[0]?.message || "Invalid event format",
+          detail: `Validation failed at ${errorDetails.path}: ${errorDetails.message}`,
+          errors: envelopeResult.error.errors.slice(0, 3),
           instance: "/api/ingest/event"
         },
         { status: 422 }
@@ -25,11 +35,14 @@ export async function POST(req: NextRequest) {
 
     const event = envelopeResult.data
 
-    if (!validateEventData(event.type, event.data)) {
+    const dataValidation = validateEventDataWithDetails(event.type, event.data)
+    if (!dataValidation.success) {
+      const firstError = dataValidation.errors?.[0]
       logger.warn({ 
         eventType: event.type, 
         eventData: event.data,
-        runId: event.subject.replace("run/", "")
+        runId: event.subject.replace("run/", ""),
+        validationErrors: dataValidation.errors
       }, "Event data validation failed")
       
       return NextResponse.json(
@@ -37,7 +50,10 @@ export async function POST(req: NextRequest) {
           type: "about:blank",
           title: "Invalid event data",
           status: 422,
-          detail: `Event data does not match schema for type: ${event.type}. Data: ${JSON.stringify(event.data)}`,
+          detail: firstError 
+            ? `Event data validation failed at '${firstError.path}': ${firstError.message}${firstError.received ? ` (received: ${JSON.stringify(firstError.received)})` : ''}`
+            : `Event data does not match schema for type: ${event.type}`,
+          errors: dataValidation.errors?.slice(0, 3),
           instance: "/api/ingest/event"
         },
         { status: 422 }

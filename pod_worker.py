@@ -205,6 +205,16 @@ class EventEmitter:
                 )
                 response.raise_for_status()
                 print(f"✓ Sent 1 event")
+            except requests.exceptions.HTTPError as e:
+                print(f"✗ Failed to send event: {e}", file=sys.stderr)
+                try:
+                    error_detail = e.response.json() if e.response else {}
+                    if error_detail:
+                        print(f"   Error details: {json.dumps(error_detail, indent=2)}", file=sys.stderr)
+                        print(f"   Event type: {self.batch[0].get('type')}", file=sys.stderr)
+                        print(f"   Event data keys: {list(self.batch[0].get('data', {}).keys())}", file=sys.stderr)
+                except:
+                    pass
             except Exception as e:
                 print(f"✗ Failed to send event: {e}", file=sys.stderr)
         else:
@@ -219,6 +229,16 @@ class EventEmitter:
                 )
                 response.raise_for_status()
                 print(f"✓ Sent {len(self.batch)} events")
+            except requests.exceptions.HTTPError as e:
+                print(f"✗ Failed to send events: {e}", file=sys.stderr)
+                try:
+                    error_detail = e.response.json() if e.response else {}
+                    if error_detail:
+                        print(f"   Error details: {json.dumps(error_detail, indent=2)}", file=sys.stderr)
+                        event_types = [event.get('type') for event in self.batch]
+                        print(f"   Event types in batch: {event_types}", file=sys.stderr)
+                except:
+                    pass
             except Exception as e:
                 print(f"✗ Failed to send events: {e}", file=sys.stderr)
             finally:

@@ -242,3 +242,28 @@ export function validateEventData(type: string, data: unknown): boolean {
   return result.success
 }
 
+export function validateEventDataWithDetails(type: string, data: unknown): { 
+  success: boolean
+  errors?: Array<{ path: string; message: string; received?: any }>
+} {
+  const schema = EVENT_TYPE_DATA_SCHEMAS[type as EventType]
+  if (!schema) {
+    return { 
+      success: false, 
+      errors: [{ path: 'type', message: `Unknown event type: ${type}` }]
+    }
+  }
+  const result = schema.safeParse(data)
+  if (result.success) {
+    return { success: true }
+  }
+  return {
+    success: false,
+    errors: result.error.errors.map(err => ({
+      path: err.path.join('.') || 'root',
+      message: err.message,
+      received: (err as any).received
+    }))
+  }
+}
+
