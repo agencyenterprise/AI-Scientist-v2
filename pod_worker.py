@@ -11,6 +11,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
+from functools import partial
 from pymongo import MongoClient, ReturnDocument
 from ulid import ULID
 
@@ -29,6 +30,73 @@ CURRENT_RUN_ID: Optional[str] = None
 CURRENT_STAGE: Optional[str] = None
 
 event_emitter = CloudEventEmitter(CONTROL_PLANE_URL, POD_ID)
+
+
+def _handle_experiment_event(run_id, emit_event_func, emitter_obj, db_obj, event_type: str, data: dict):
+    """
+    Module-level event handler for experiments that can be pickled for multiprocessing.
+    
+    Args:
+        run_id: The run identifier
+        emit_event_func: Function to emit events
+        emitter_obj: The emitter object for flushing
+        db_obj: MongoDB database object
+        event_type: Type of event
+        data: Event data dictionary
+    """
+    data["run_id"] = run_id
+    emit_event_func(event_type, data)
+    emitter_obj.flush()
+    
+    # Update MongoDB currentStage when internal BFTS stages progress
+    if event_type == "ai.run.stage_progress":
+        try:
+            internal_stage = data.get("stage", "")
+            progress = data.get("progress", 0.0)
+            # Clamp progress to [0, 1] to prevent validation errors
+            progress = max(0.0, min(progress, 1.0))
+            iteration = data.get("iteration", 0)
+            max_iterations = data.get("max_iterations", 1)
+            good_nodes = data.get("good_nodes", 0)
+            buggy_nodes = data.get("buggy_nodes", 0)
+            total_nodes = data.get("total_nodes", 0)
+            
+            # Map internal BFTS stage names to user-friendly names
+            substage_display_names = {
+                "1_initial": "Initial Implementation",
+                "2_baseline": "Baseline Tuning",
+                "3_creative": "Creative Research",
+                "4_ablation": "Ablation Studies",
+                # Legacy formats just in case
+                "stage_1": "Initial Implementation",
+                "stage_2": "Baseline Tuning",
+                "stage_3": "Creative Research",
+                "stage_4": "Ablation Studies"
+            }
+            
+            substage_name = substage_display_names.get(internal_stage, internal_stage)
+            
+            print(f"🔄 Updating UI: Stage_1 → {substage_name} - {progress*100:.1f}% ({good_nodes}/{total_nodes} nodes)")
+            
+            # Keep Stage_1 as main stage
+            stage_data = {
+                "name": "Stage_1",
+                "progress": progress,
+                "iteration": iteration,
+                "maxIterations": max_iterations,
+                "goodNodes": good_nodes,
+                "buggyNodes": buggy_nodes,
+                "totalNodes": total_nodes,
+                "bestMetric": data.get("best_metric")
+            }
+            
+            db_obj['runs'].update_one(
+                {"_id": run_id},
+                {"$set": {"currentStage": stage_data}}
+            )
+        except Exception as e:
+            print(f"Failed to update currentStage in MongoDB: {e}")
+            traceback.print_exc()
 
 
 def find_best_pdf_for_review(pdf_files):
@@ -817,68 +885,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         heartbeat_thread.start()
         print(f"💓 Heartbeat started (30s intervals)")
         
-        def experiment_event_callback(event_type: str, data: dict):
-            data["run_id"] = run_id
-            emit_event(event_type, data)
-            emitter.flush()
-            
-            # Update MongoDB currentStage when internal BFTS stages progress
-            if event_type == "ai.run.stage_progress":
-                try:
-                    internal_stage = data.get("stage", "")
-                    progress = data.get("progress", 0.0)
-                    # Clamp progress to [0, 1] to prevent validation errors
-                    progress = max(0.0, min(progress, 1.0))
-                    iteration = data.get("iteration", 0)
-                    max_iterations = data.get("max_iterations", 1)
-                    good_nodes = data.get("good_nodes", 0)
-                    buggy_nodes = data.get("buggy_nodes", 0)
-                    total_nodes = data.get("total_nodes", 0)
-                    
-                    # Map internal BFTS stage names to user-friendly names
-                    # Format from perform_experiments_bfts: "1_initial", "2_baseline", "3_creative", "4_ablation"
-                    substage_display_names = {
-                        "1_initial": "Initial Implementation",
-                        "2_baseline": "Baseline Tuning",
-                        "3_creative": "Creative Research",
-                        "4_ablation": "Ablation Studies",
-                        # Legacy formats just in case
-                        "stage_1": "Initial Implementation",
-                        "stage_2": "Baseline Tuning",
-                        "stage_3": "Creative Research",
-                        "stage_4": "Ablation Studies"
-                    }
-                    
-                    substage_name = substage_display_names.get(internal_stage, internal_stage)
-                    
-                    print(f"🔄 Updating UI: Stage_1 → {substage_name} - {progress*100:.1f}% ({good_nodes}/{total_nodes} nodes)")
-                    
-                    # Keep Stage_1 as main stage, optionally show Sakana stage as substage
-                    # Note: Only include substage fields if frontend schema supports them
-                    # This ensures backward compatibility
-                    stage_data = {
-                        "name": "Stage_1",  # Keep UI-compatible stage name
-                        "progress": progress,
-                        "iteration": iteration,
-                        "maxIterations": max_iterations,
-                        "goodNodes": good_nodes,
-                        "buggyNodes": buggy_nodes,
-                        "totalNodes": total_nodes,
-                        "bestMetric": data.get("best_metric")
-                    }
-                    
-                    # TODO: Uncomment when frontend schema is deployed with substage support
-                    # stage_data["substage"] = substage_name
-                    # stage_data["substageFull"] = f"{substage_name} ({good_nodes}/{total_nodes} nodes)"
-                    
-                    db['runs'].update_one(
-                        {"_id": run_id},
-                        {"$set": {"currentStage": stage_data}}
-                    )
-                except Exception as e:
-                    print(f"Failed to update currentStage in MongoDB: {e}")
-                    import traceback
-                    traceback.print_exc()
+        # Create picklable event callback using partial
+        experiment_event_callback = partial(_handle_experiment_event, run_id, emit_event, emitter, db)
         
         # Stage 1: Run experiments
         with StageContext("Stage_1", run_id):
