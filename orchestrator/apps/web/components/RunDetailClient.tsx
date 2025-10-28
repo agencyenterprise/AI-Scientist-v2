@@ -23,6 +23,7 @@ import { StageTimingView } from "@/components/StageTimingView"
 import { LiveLogViewer } from "@/components/LiveLogViewer"
 import { PlotGallery } from "@/components/PlotGallery"
 import { CurrentActivityBanner } from "@/components/CurrentActivityBanner"
+import { FinalPdfBanner } from "@/components/FinalPdfBanner"
 
 type RunDetail = {
   run: Run
@@ -155,6 +156,8 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
       </header>
 
       <ErrorDisplay run={detail.run} />
+
+      <FinalPdfBanner runId={detail.run._id} artifacts={detail.artifacts} />
       
       {detail.run.status === "RUNNING" && (
         <CurrentActivityBanner runId={detail.run._id} />
@@ -302,4 +305,3 @@ function deriveStatus(name: StageName, runStatus: string, currentName?: StageNam
   }
   return currentIndex >= stageIndex ? "COMPLETED" : "PENDING"
 }
-
