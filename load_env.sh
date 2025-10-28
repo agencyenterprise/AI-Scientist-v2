@@ -16,11 +16,18 @@ while IFS= read -r line; do
     
     # Only process lines that match KEY=value pattern
     if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-        # Remove quotes if present
-        cleaned_line=$(echo "$line" | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")
-        export "$cleaned_line"
-        # Get just the key name for display
-        key=$(echo "$line" | cut -d= -f1)
+        # Split on first = to get key and value
+        key="${line%%=*}"
+        value="${line#*=}"
+        
+        # Remove surrounding quotes from value (both single and double)
+        value="${value%\"}"  # Remove trailing "
+        value="${value#\"}"  # Remove leading "
+        value="${value%\'}"  # Remove trailing '
+        value="${value#\'}"  # Remove leading '
+        
+        # Export the variable
+        export "$key=$value"
         echo "  ✓ Loaded: $key"
     fi
 done < .env
