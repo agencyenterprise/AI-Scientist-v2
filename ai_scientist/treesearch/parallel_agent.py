@@ -1862,6 +1862,20 @@ class ParallelAgent:
             result_data = child_node.to_dict()
             print(f"Result data keys: {result_data.keys()}")
             print(f"Result data size: {len(str(result_data))} chars")
+            # Ensure result data is picklable before returning to parent
+            import pickle
+            try:
+                pickle.dumps(result_data)
+            except Exception as pickle_error:
+                print(f"[red]Unable to pickle result_data: {pickle_error}[/red]")
+                for key, value in result_data.items():
+                    try:
+                        pickle.dumps(value)
+                    except Exception as sub_error:
+                        print(
+                            f"[red]Field '{key}' (type={type(value)}) is not picklable: {sub_error}[/red]"
+                        )
+                raise
             print("Returning result")
             return result_data
 
