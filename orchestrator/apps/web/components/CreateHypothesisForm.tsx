@@ -3,18 +3,6 @@
 import { FormEvent, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { HypothesisConfirmationModal } from "./HypothesisConfirmationModal"
-import { IdeationPreviewModal } from "./IdeationPreviewModal"
-
-interface IdeationResult {
-  Name: string
-  Title: string
-  "Short Hypothesis": string
-  Abstract: string
-  "Related Work"?: string
-  Experiments?: string | string[]
-  "Risk Factors and Limitations"?: string | string[]
-  [key: string]: any
-}
 
 export function CreateHypothesisForm() {
   const router = useRouter()
@@ -24,17 +12,11 @@ export function CreateHypothesisForm() {
   const [chatGptUrl, setChatGptUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
-  const [runningIdeation, setRunningIdeation] = useState(false)
   
-  // Modal state for ChatGPT extraction
+  // Modal state
   const [showModal, setShowModal] = useState(false)
   const [modalTitle, setModalTitle] = useState("")
   const [modalDescription, setModalDescription] = useState("")
-
-  // Modal state for ideation preview
-  const [showIdeationModal, setShowIdeationModal] = useState(false)
-  const [ideationResult, setIdeationResult] = useState<IdeationResult | null>(null)
-  const [pendingRunId, setPendingRunId] = useState<string | null>(null)
 
   const validateChatGptUrl = (url: string): string | null => {
     if (!url.trim()) return null
@@ -100,7 +82,7 @@ export function CreateHypothesisForm() {
     setIdea(confirmedDescription)
     setShowModal(false)
     
-    // Submit immediately after closing modal (ChatGPT extraction path - skip ideation)
+    // Submit immediately after closing modal
     startTransition(async () => {
       setError(null)
       const response = await fetch("/api/hypotheses", {
@@ -116,17 +98,11 @@ export function CreateHypothesisForm() {
         setError(message || "Failed to create hypothesis")
         return
       }
-      
-      // Get the created hypothesis and run
-      const data = await response.json()
-      
-      // Clear form and redirect to run page
+      // Clear form and redirect
       setTitle("")
       setIdea("")
       setChatGptUrl("")
-      
-      // Redirect to the run page
-      router.push(`/runs/${data.run._id}`)
+      router.push("/")
       router.refresh()
     })
   }
@@ -136,85 +112,26 @@ export function CreateHypothesisForm() {
     setChatGptUrl("")
   }
 
-  const handleIdeationConfirm = (confirmedIdeaJson: IdeationResult) => {
-    setShowIdeationModal(false)
-    
-    // Create hypothesis with the confirmed ideaJson
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     startTransition(async () => {
       setError(null)
       const response = await fetch("/api/hypotheses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ 
-          title: confirmedIdeaJson.Title, 
-          idea: confirmedIdeaJson.Abstract,
-          ideaJson: confirmedIdeaJson
-        })
+        body: JSON.stringify({ title, idea })
       })
       if (!response.ok) {
         const message = await response.text()
         setError(message || "Failed to create hypothesis")
         return
       }
-      
-      const data = await response.json()
-      
-      // Clear form and redirect to run page
       setTitle("")
       setIdea("")
       setChatGptUrl("")
-      setIdeationResult(null)
-      
-      router.push(`/runs/${data.run._id}`)
+      router.push("/")
       router.refresh()
     })
-  }
-
-  const handleIdeationCancel = () => {
-    setShowIdeationModal(false)
-    setIdeationResult(null)
-    setRunningIdeation(false)
-  }
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
-    setRunningIdeation(true)
-
-    try {
-      // First, run the ideation pipeline
-      console.log("Running ideation pipeline...")
-      const ideationResponse = await fetch("/api/ideation/preview", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, idea })
-      })
-
-      if (!ideationResponse.ok) {
-        const errorData = await ideationResponse.json()
-        setError(errorData.error || "Failed to generate research proposal")
-        setRunningIdeation(false)
-        return
-      }
-
-      const ideationData = await ideationResponse.json()
-      
-      if (!ideationData.success || !ideationData.idea) {
-        setError("Failed to generate research proposal")
-        setRunningIdeation(false)
-        return
-      }
-
-      // Show the ideation result in a modal for confirmation
-      setIdeationResult(ideationData.idea)
-      setShowIdeationModal(true)
-      setRunningIdeation(false)
-
-    } catch (err) {
-      console.error("Error during ideation:", err)
-      setError("Network error while generating research proposal")
-      setRunningIdeation(false)
-    }
   }
 
   return (
@@ -225,15 +142,6 @@ export function CreateHypothesisForm() {
         description={modalDescription}
         onConfirm={handleModalConfirm}
         onCancel={handleModalCancel}
-      />
-
-      <IdeationPreviewModal
-        isOpen={showIdeationModal}
-        ideationResult={ideationResult}
-        onConfirm={handleIdeationConfirm}
-        onCancel={handleIdeationCancel}
-        originalTitle={title}
-        originalIdea={idea}
       />
       
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -246,7 +154,7 @@ export function CreateHypothesisForm() {
             className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-50"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            disabled={extracting || pending || runningIdeation}
+            disabled={extracting || pending}
             required
           />
         </div>
@@ -260,7 +168,7 @@ export function CreateHypothesisForm() {
             rows={4}
             value={idea}
             onChange={(event) => setIdea(event.target.value)}
-            disabled={extracting || pending || runningIdeation}
+            disabled={extracting || pending}
             required
           />
         </div>
@@ -288,7 +196,7 @@ export function CreateHypothesisForm() {
               className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 disabled:opacity-50"
               value={chatGptUrl}
               onChange={(event) => handleChatGptUrlChange(event.target.value)}
-              disabled={extracting || pending || runningIdeation}
+              disabled={extracting || pending}
             />
             {extracting && (
               <div className="flex items-center px-3">
@@ -330,40 +238,13 @@ export function CreateHypothesisForm() {
         <div className="flex items-center gap-4">
           <button
             type="submit"
-            className="rounded border border-sky-600/60 bg-sky-900/40 px-4 py-2 text-sm font-semibold text-sky-100 disabled:opacity-40 flex items-center gap-2"
-            disabled={pending || extracting || runningIdeation}
+            className="rounded border border-sky-600/60 bg-sky-900/40 px-4 py-2 text-sm font-semibold text-sky-100 disabled:opacity-40"
+            disabled={pending || extracting}
           >
-            {runningIdeation && (
-              <svg
-                className="animate-spin h-4 w-4"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            )}
-            {runningIdeation ? "Generating Research Proposal..." : "Create Hypothesis"}
+            Create Hypothesis
           </button>
           {error && <span className="text-sm text-rose-400">{error}</span>}
         </div>
-        {runningIdeation && (
-          <p className="text-xs text-sky-400">
-            Running ideation pipeline with literature search and reflection... This may take 1-2 minutes.
-          </p>
-        )}
       </form>
     </>
   )
