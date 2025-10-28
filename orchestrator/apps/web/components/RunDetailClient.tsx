@@ -24,6 +24,7 @@ import { LiveLogViewer } from "@/components/LiveLogViewer"
 import { PlotGallery } from "@/components/PlotGallery"
 import { CurrentActivityBanner } from "@/components/CurrentActivityBanner"
 import { FinalPdfBanner } from "@/components/FinalPdfBanner"
+import { IdeationDisplay } from "@/components/IdeationDisplay"
 
 type RunDetail = {
   run: Run
@@ -156,6 +157,10 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
       </header>
 
       <ErrorDisplay run={detail.run} />
+      
+      {detail.hypothesis?.ideaJson && (
+        <IdeationDisplay ideaJson={detail.hypothesis.ideaJson} />
+      )}
       
       <FinalPdfBanner runId={detail.run._id} artifacts={detail.artifacts} />
       

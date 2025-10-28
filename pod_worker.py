@@ -148,8 +148,21 @@ def git_pull():
         )
         
         if "pod_worker.py" in result.stdout:
-            print("⚠️  pod_worker.py was updated - please restart this worker to use new version")
-            print("   (Worker will continue with current version for now)")
+            print("🔄 pod_worker.py was updated - restarting worker with new version...")
+            print("   (This is safe since we're between experiments)")
+            
+            # Get the full path to this script
+            script_path = Path(__file__).absolute()
+            
+            # Use execv to replace the current process with a fresh Python interpreter
+            # running the new code. This is NOT a subprocess - it's process replacement:
+            # - Same PID (process ID doesn't change)
+            # - Environment variables are automatically inherited
+            # - No parent-child relationship
+            # - Old process memory is completely replaced with new code
+            # - Atomic operation - no race conditions
+            os.execv(sys.executable, [sys.executable, str(script_path)])
+            # Note: code after execv never runs - process is replaced
         
         return True
         

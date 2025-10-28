@@ -11,7 +11,8 @@ export const runtime = "nodejs"
 const CreateHypothesisSchema = z.object({
   title: z.string().min(3),
   idea: z.string().min(10),
-  createdBy: z.string().min(1).default("system")
+  createdBy: z.string().min(1).default("system"),
+  ideaJson: z.record(z.any()).optional()
 })
 
 const QuerySchema = z.object({
@@ -53,7 +54,9 @@ export async function POST(req: NextRequest) {
       throw createBadRequest("Invalid payload", { issues: parsed.error.issues })
     }
     
-    const ideaJson = {
+    // Use pre-generated ideaJson if provided (from ideation pipeline)
+    // Otherwise, create a simple one as fallback
+    const ideaJson = parsed.data.ideaJson || {
       Name: parsed.data.title.toLowerCase().replace(/\s+/g, "_"),
       Title: parsed.data.title,
       "Short Hypothesis": parsed.data.idea.slice(0, 200),
@@ -78,9 +81,9 @@ export async function POST(req: NextRequest) {
       createdBy: parsed.data.createdBy
     })
     
-    await enqueueRun(hypothesis._id)
+    const run = await enqueueRun(hypothesis._id)
     
-    return NextResponse.json(hypothesis, { status: 201 })
+    return NextResponse.json({ hypothesis, run }, { status: 201 })
   } catch (error) {
     return handleError(error)
   }
