@@ -149,7 +149,7 @@ def git_pull():
         
         if "pod_worker.py" in result.stdout:
             print("🔄 pod_worker.py was updated - restarting worker with new version...")
-            print("   (This is safe since we're between experiments)")
+            print("   (This is safe since we're between experiments.)")
             
             # Get the full path to this script
             script_path = Path(__file__).absolute()
