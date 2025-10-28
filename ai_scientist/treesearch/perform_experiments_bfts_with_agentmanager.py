@@ -4,6 +4,7 @@ import shutil
 import json
 import pickle
 import time
+from functools import partial
 from . import backend
 from .journal import Journal, Node
 from .journal2report import journal2report
@@ -30,6 +31,15 @@ from .log_summarization import overall_summarize
 
 
 logger = logging.getLogger("ai-scientist")
+
+
+def _safe_emit_event(event_callback, event_type: str, data: dict):
+    """Module-level function for event emission that can be pickled for multiprocessing."""
+    if event_callback:
+        try:
+            event_callback(event_type, data)
+        except Exception as e:
+            logger.warning(f"Event callback failed: {e}")
 
 
 def journal_to_rich_tree(journal: Journal):
@@ -62,12 +72,8 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
     cfg = load_cfg(config_path)
     logger.info(f'Starting run "{cfg.exp_name}"')
     
-    def emit_event(event_type: str, data: dict):
-        if event_callback:
-            try:
-                event_callback(event_type, data)
-            except Exception as e:
-                logger.warning(f"Event callback failed: {e}")
+    # Use partial to create a picklable emit_event function
+    emit_event = partial(_safe_emit_event, event_callback)
 
     task_desc = load_task_desc(cfg)
     print(task_desc)
