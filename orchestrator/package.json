@@ -1,0 +1,18 @@
+{
+  "name": "ai-scientist",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "start": "pnpm --filter web start",
+    "lint": "pnpm --filter web lint",
+    "typecheck": "pnpm --filter web typecheck",
+    "test": "pnpm --filter web test",
+    "e2e": "pnpm --filter web e2e",
+    "seed": "pnpm --filter web seed",
+    "check:minio": "pnpm --filter web check:minio"
+  }
+}

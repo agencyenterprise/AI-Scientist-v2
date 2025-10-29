@@ -121,7 +121,7 @@ class StageTransition:
 
 
 class AgentManager:
-    def __init__(self, task_desc: str, cfg: Any, workspace_dir: Path):
+    def __init__(self, task_desc: str, cfg: Any, workspace_dir: Path, event_callback=None):
         self.task_desc = json.loads(task_desc)
         for k in [
             "Title",
@@ -134,6 +134,7 @@ class AgentManager:
                 raise ValueError(f"Key {k} not found in task_desc")
         self.cfg = cfg
         self.workspace_dir = workspace_dir
+        self.event_callback = event_callback
         self.current_stage_number = 0
         self.stages: List[Stage] = []
         self.current_stage: Optional[Stage] = None
@@ -149,18 +150,18 @@ class AgentManager:
         self.main_stage_goals: Dict[int, str] = {
             1: """
                 - Focus on getting basic working implementation
-                - Use a simple dataset
+                - Use a dataset appropriate to the experiment
                 - Aim for basic functional correctness
                 - If you are given \"Code To Use\", you can directly use it as a starting point.""",
             2: """
                 - Change hyperparameters such as learning rate, number of epochs, batch size, etc. to improve the performance
                 - DO NOT change the model architecture from the previous stage
-                - Introduce TWO more new datasets from HuggingFace test the model. Try very hard to think what Huggingface datasets can be used here for testing.""",
+                - Introduce additional datasets from HuggingFace to test the model. Use dataset sizes appropriate to the experiment. Use streaming=True for very large datasets. See hf_dataset_reference.py for examples of available datasets.""",
             3: """
                 - Explore novel improvements
                 - Come up with experiments to reveal new insights
                 - Be creative and think outside the box
-                - MAKE SURE you use THREE HuggingFace dataset in total to test your models""",
+                - Test your models on multiple HuggingFace datasets to demonstrate generalization. Use dataset sizes appropriate to the experiment. Usually THREE datasets are enough.""",
             4: """
                 - Conduct systematic component analysis that reveals the contribution of each part
                 - Use the same datasets you used from the previous stage""",
@@ -211,7 +212,7 @@ Your research idea:\n\n
 
         self.stages.append(initial_stage)
         self.current_stage = initial_stage
-        self.journals[initial_stage.name] = Journal()
+        self.journals[initial_stage.name] = Journal(event_callback=self.event_callback)
 
     def _curate_task_desc(self, stage: Stage) -> str:
         task_desc = self._get_task_desc_str()
@@ -326,6 +327,7 @@ Your research idea:\n\n
             best_stage3_node=best_stage3_node,
             best_stage2_node=best_stage2_node,
             best_stage1_node=best_stage1_node,
+            event_callback=self.event_callback,
         )
 
     def _parse_vlm_feedback(self, node: Node) -> str:
@@ -375,6 +377,22 @@ Your research idea:\n\n
                 print(
                     f"[green]Stage {current_substage.name} completed: {evaluation['reasoning']}[/green]"
                 )
+                
+                # Emit user-facing success event
+                if self.event_callback:
+                    try:
+                        self.event_callback("ai.run.log", {
+                            "message": f"✅ Stage {current_substage.name} completed!",
+                            "level": "info"
+                        })
+                        reasoning_preview = evaluation['reasoning'][:300] + "..." if len(evaluation['reasoning']) > 300 else evaluation['reasoning']
+                        self.event_callback("ai.run.log", {
+                            "message": f"📋 {reasoning_preview}",
+                            "level": "info"
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to emit completion event: {e}")
+                
                 return True, "Found working implementation"
             else:
                 missing = ", ".join(evaluation["missing_criteria"])
@@ -384,6 +402,21 @@ Your research idea:\n\n
                 print(
                     f"[yellow]Stage {current_substage.name} not complete. Missing: {missing}[/yellow]"
                 )
+                
+                # Emit user-facing status event
+                if self.event_callback:
+                    try:
+                        self.event_callback("ai.run.log", {
+                            "message": f"🔄 Stage {current_substage.name} continuing - needs more work",
+                            "level": "info"
+                        })
+                        self.event_callback("ai.run.log", {
+                            "message": f"❓ Missing: {missing[:200]}...",
+                            "level": "warn"
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to emit status event: {e}")
+                
                 return False, "Missing criteria: " + missing
         except Exception as e:
             logger.error(
@@ -796,7 +829,7 @@ Your research idea:\n\n
 
                                 # Setup new sub-stage
                                 self.stages.append(next_substage)
-                                self.journals[next_substage.name] = Journal()
+                                self.journals[next_substage.name] = Journal(event_callback=self.event_callback)
                                 current_substage = next_substage
                             else:
                                 # If no next sub-stage could be created, end this main stage
@@ -820,7 +853,7 @@ Your research idea:\n\n
                     )
 
                     self.stages.append(next_main_stage)
-                    self.journals[next_main_stage.name] = Journal()
+                    self.journals[next_main_stage.name] = Journal(event_callback=self.event_callback)
                     self.current_stage = next_main_stage
                 else:
                     # Exit the outer loop if no more main stages

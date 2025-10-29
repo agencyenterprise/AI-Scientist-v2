@@ -34,6 +34,11 @@ def query(
     _setup_openai_client()
     filtered_kwargs: dict = select_values(notnone, model_kwargs)  # type: ignore
 
+    # gpt-5 models only support temperature=1
+    model = filtered_kwargs.get("model", "")
+    if "gpt-5" in model and "temperature" in filtered_kwargs:
+        filtered_kwargs["temperature"] = 1.0
+
     messages = opt_messages_to_list(system_message, user_message)
 
     if func_spec is not None:

@@ -14,13 +14,19 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
-from multiprocessing import Process, Queue
+import multiprocessing
+from multiprocessing import Queue
 from pathlib import Path
 
 import humanize
 from dataclasses_json import DataClassJsonMixin
 
 logger = logging.getLogger("ai-scientist")
+
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass
 
 
 @dataclass
@@ -105,8 +111,9 @@ class Interpreter:
         self.timeout = timeout
         self.format_tb_ipython = format_tb_ipython
         self.agent_file_name = agent_file_name
-        self.process: Process = None  # type: ignore
+        self.process = None  # type: ignore
         self.env_vars = env_vars
+        self.mp_context = multiprocessing.get_context('spawn')
 
     def child_proc_setup(self, result_outq: Queue) -> None:
         # disable all warnings (before importing anything)
@@ -115,7 +122,9 @@ class Interpreter:
         shutup.mute_warnings()
 
         for key, value in self.env_vars.items():
-            os.environ[key] = value
+            if value is None:
+                continue
+            os.environ[key] = str(value)
 
         os.chdir(str(self.working_dir))
 
@@ -166,8 +175,8 @@ class Interpreter:
         # - result_outq: receive stdout/stderr from child
         # - event_outq: receive events from child (e.g. state:ready, state:finished)
         # trunk-ignore(mypy/var-annotated)
-        self.code_inq, self.result_outq, self.event_outq = Queue(), Queue(), Queue()
-        self.process = Process(
+        self.code_inq, self.result_outq, self.event_outq = self.mp_context.Queue(), self.mp_context.Queue(), self.mp_context.Queue()
+        self.process = self.mp_context.Process(
             target=self._run_session,
             args=(self.code_inq, self.result_outq, self.event_outq),
         )

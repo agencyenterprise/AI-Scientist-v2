@@ -27,14 +27,76 @@ This system autonomously generates hypotheses, runs experiments, analyzes data, 
 
 ## Table of Contents
 
-1.  [Requirements](#requirements)
+1.  [Orchestrator & Pod Worker System](#orchestrator--pod-worker-system) ⭐ **NEW**
+    *   [Quick Start](#quick-start)
+    *   [Architecture](#architecture)
+2.  [Requirements](#requirements)
     *   [Installation](#installation)
     *   [Supported Models and API Keys](#supported-models-and-api-keys)
-2.  [Generate Research Ideas](#generate-research-ideas)
-3.  [Run AI Scientist-v2 Paper Generation Experiments](#run-ai-scientist-v2-paper-generation-experiments)
-4.  [Citing The AI Scientist-v2](#citing-the-ai-scientist-v2)
-5.  [Frequently Asked Questions](#frequently-asked-questions)
-6.  [Acknowledgement](#acknowledgement)
+3.  [Generate Research Ideas](#generate-research-ideas)
+4.  [Run AI Scientist-v2 Paper Generation Experiments](#run-ai-scientist-v2-paper-generation-experiments)
+5.  [Citing The AI Scientist-v2](#citing-the-ai-scientist-v2)
+6.  [Frequently Asked Questions](#frequently-asked-questions)
+7.  [Acknowledgement](#acknowledgement)
+
+## Orchestrator & Pod Worker System
+
+The AI Scientist-v2 now includes a **production-ready orchestration system** that allows you to manage experiments via a web frontend and run them on GPU pods (RunPod, Lambda Labs, etc.). This replaces the need for Streamlit and provides full monitoring capabilities.
+
+### Quick Start
+
+See **[QUICK_START.md](docs/QUICK_START.md)** for a 5-minute setup guide.
+
+```bash
+# 1. Deploy backend (Railway/Vercel)
+cd orchestrator/apps/web
+git push
+
+# 2. Set up RunPod worker
+cd AI-Scientist-v2
+# Create .env with MONGODB_URL, OPENAI_API_KEY, etc.
+bash init_runpod.sh
+
+# 3. Create experiments via web UI
+# Visit https://your-app.railway.app/hypotheses
+```
+
+### Architecture
+
+The system uses a **pull-based architecture** where pods autonomously fetch work from MongoDB:
+
+```
+Frontend (Next.js) → MongoDB ← Pod Workers (RunPod)
+                         ↓
+                    CloudEvents
+                         ↓
+              Real-time Updates (via MongoDB)
+```
+
+**Key Features:**
+- ✅ **No race conditions** - Atomic queue operations
+- ✅ **No Redis needed** - MongoDB IS the queue
+- ✅ **Universal error handling** - All exceptions auto-reported to frontend
+- ✅ **Real-time monitoring** - See stage progress, metrics, errors live
+- ✅ **Auto-recovery** - Workers can crash/restart safely
+- ✅ **Horizontal scaling** - Run multiple pods, no coordination needed
+
+**Components:**
+- **Frontend:** Next.js app with React Query (`orchestrator/apps/web`)
+- **Backend:** REST API + CloudEvents ingestion (`/api/ingest/*`)
+- **Pod Worker:** Python script that polls MongoDB and runs experiments (`pod_worker.py`)
+- **Event System:** CloudEvents 1.0 with NDJSON batching
+- **Storage:** MongoDB (state), MinIO (artifacts)
+
+**Documentation:**
+- [QUICK_START.md](docs/QUICK_START.md) - Get running in 5 minutes
+- [POD_WORKER_GUIDE.md](docs/POD_WORKER_GUIDE.md) - Detailed architecture and troubleshooting
+- [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) - Technical details
+
+**Tools:**
+- `python pod_worker.py` - Start pod worker
+- `python test_event_ingestion.py` - Test event ingestion
+- `python manage_runs.py` - CLI to manage runs (list, show, reset, cancel)
 
 ## Requirements
 
@@ -48,11 +110,11 @@ conda create -n ai_scientist python=3.11
 conda activate ai_scientist
 
 # Install PyTorch with CUDA support (adjust pytorch-cuda version for your setup)
-conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
+conda install -y pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
 
 # Install PDF and LaTeX tools
-conda install anaconda::poppler
-conda install conda-forge::chktex
+conda install -y anaconda::poppler
+conda install -y conda-forge::chktex
 
 # Install Python package requirements
 pip install -r requirements.txt
@@ -199,4 +261,3 @@ The tree search component implemented within the `ai_scientist` directory is bui
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=SakanaAI/AI-Scientist-v2&type=Date)](https://star-history.com/#SakanaAI/AI-Scientist-v2&Date)
-

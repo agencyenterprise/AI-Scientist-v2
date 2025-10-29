@@ -363,6 +363,18 @@ class Journal:
     """A collection of nodes representing the solution tree."""
 
     nodes: list[Node] = field(default_factory=list)
+    event_callback: callable = field(default=None, kw_only=True, repr=False)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # event callbacks often capture network clients (SSLContext) which are not picklable
+        state["event_callback"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # callbacks are reattached by the manager after restore if needed
+        self.event_callback = None
 
     def __getitem__(self, idx: int) -> Node:
         return self.nodes[idx]
@@ -471,8 +483,8 @@ class Journal:
                 system_message=prompt,
                 user_message=None,
                 func_spec=node_selection_spec,
-                model="gpt-4o",
-                temperature=0.3,
+                model="gpt-5-mini",
+                temperature=1.0,  # gpt-5 family requires temperature=1.0
             )
 
             # Find and return the selected node
@@ -485,6 +497,23 @@ class Journal:
                     f"Selected node {selected_node.id} as best implementation"
                 )
                 logger.warning(f"Reasoning: {selection['reasoning']}")
+                
+                # Emit user-facing event with the selection reasoning
+                if self.event_callback:
+                    try:
+                        self.event_callback("ai.run.log", {
+                            "message": f"🎯 Selected best implementation: {selected_node.id[:8]}...",
+                            "level": "info"
+                        })
+                        # Send detailed reasoning
+                        reasoning_preview = selection['reasoning'][:500] + "..." if len(selection['reasoning']) > 500 else selection['reasoning']
+                        self.event_callback("ai.run.log", {
+                            "message": f"💡 Reasoning: {reasoning_preview}",
+                            "level": "info"
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to emit selection event: {e}")
+                
                 return selected_node
             else:
                 logger.warning("Falling back to metric-based selection")

@@ -1,7 +1,10 @@
 # LLM APIs
-anthropic
 backoff
 openai
+anthropic
+python-dotenv
+pymongo
+python-ulid
 # Viz
 matplotlib
 pypdf
@@ -9,8 +12,11 @@ pymupdf4llm
 seaborn
 # Common Requirements
 numpy
+torch
+sympy
 transformers
 datasets
+hf-transfer
 tiktoken
 wandb
 tqdm
@@ -25,5 +31,8 @@ python-igraph
 coolname
 jsonschema
 omegaconf
-botocore
-boto3
+requests
+psutil
+watchdog
+runpod
+playwright

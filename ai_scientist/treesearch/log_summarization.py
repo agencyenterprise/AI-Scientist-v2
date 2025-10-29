@@ -349,7 +349,13 @@ def overall_summarize(journals):
                 total=len(list(journals)),
             )
         )
-        draft_summary, baseline_summary, research_summary, ablation_summary = results
+        
+        # Handle cases where experiment failed early and doesn't have all 4 stages
+        # Pad results with None to ensure we always have 4 values
+        while len(results) < 4:
+            results.append(None)
+        
+        draft_summary, baseline_summary, research_summary, ablation_summary = results[:4]
 
     return draft_summary, baseline_summary, research_summary, ablation_summary
 

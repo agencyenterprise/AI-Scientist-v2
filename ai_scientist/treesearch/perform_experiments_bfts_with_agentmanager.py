@@ -3,6 +3,8 @@ import logging
 import shutil
 import json
 import pickle
+import time
+from functools import partial
 from . import backend
 from .journal import Journal, Node
 from .journal2report import journal2report
@@ -31,6 +33,15 @@ from .log_summarization import overall_summarize
 logger = logging.getLogger("ai-scientist")
 
 
+def _safe_emit_event(event_callback, event_type: str, data: dict):
+    """Module-level function for event emission that can be pickled for multiprocessing."""
+    if event_callback:
+        try:
+            event_callback(event_type, data)
+        except Exception as e:
+            logger.warning(f"Event callback failed: {e}")
+
+
 def journal_to_rich_tree(journal: Journal):
     best_node = journal.get_best_node()
 
@@ -55,11 +66,14 @@ def journal_to_rich_tree(journal: Journal):
     return tree
 
 
-def perform_experiments_bfts(config_path: str):
+def perform_experiments_bfts(config_path: str, event_callback=None):
     # turn config path string into a path object
     config_path = Path(config_path)
     cfg = load_cfg(config_path)
     logger.info(f'Starting run "{cfg.exp_name}"')
+    
+    # Use partial to create a picklable emit_event function
+    emit_event = partial(_safe_emit_event, event_callback)
 
     task_desc = load_task_desc(cfg)
     print(task_desc)
@@ -80,6 +94,7 @@ def perform_experiments_bfts(config_path: str):
         task_desc=task_desc,
         cfg=cfg,
         workspace_dir=Path(cfg.workspace_dir),
+        event_callback=emit_event,
     )
 
     prog = Progress(
@@ -100,14 +115,27 @@ def perform_experiments_bfts(config_path: str):
 
         return exec_callback
 
+    # Track iteration timing for smart ETA calculation
+    iteration_start_times = []
+    iteration_durations = []
+    
     def step_callback(stage, journal):
         print("Step complete")
         try:
+            # Track iteration timing
+            current_time = time.time()
+            if len(iteration_start_times) > 0:
+                duration = current_time - iteration_start_times[-1]
+                iteration_durations.append(duration)
+            iteration_start_times.append(current_time)
+            
             # Generate and save notes for this step
             notes_dir = cfg.log_dir / f"stage_{stage.name}" / "notes"
             notes_dir.mkdir(parents=True, exist_ok=True)
 
             # Save latest node summary
+            latest_node_summary = None
+            latest_node = None
             if journal.nodes:
                 latest_node = journal.nodes[-1]
                 if hasattr(latest_node, "_agent"):
@@ -116,16 +144,18 @@ def perform_experiments_bfts(config_path: str):
                         notes_dir / f"node_{latest_node.id}_summary.json", "w"
                     ) as f:
                         json.dump(summary, f, indent=2)
+                    latest_node_summary = summary
 
             # Generate and save stage progress summary
+            best_node = journal.get_best_node()
             stage_summary = {
                 "stage": stage.name,
                 "total_nodes": len(journal.nodes),
                 "buggy_nodes": len(journal.buggy_nodes),
                 "good_nodes": len(journal.good_nodes),
                 "best_metric": (
-                    str(journal.get_best_node().metric)
-                    if journal.get_best_node()
+                    str(best_node.metric)
+                    if best_node
                     else "None"
                 ),
                 "current_findings": journal.generate_summary(include_code=False),
@@ -136,6 +166,66 @@ def perform_experiments_bfts(config_path: str):
 
             # Save the run as before
             save_run(cfg, journal, stage_name=f"stage_{stage.name}")
+            
+            # ALWAYS emit progress - show actual work being done
+            # Use total nodes as iteration count so progress shows even when all buggy
+            current_iteration = len(journal.nodes)
+            progress = max(0.0, min(current_iteration / stage.max_iterations, 1.0)) if stage.max_iterations > 0 else 0.0
+            
+            # Calculate smart ETA using moving average of recent iterations
+            eta_s = None
+            if len(iteration_durations) >= 2:
+                # Use last 5 iterations (or fewer if not enough data)
+                recent_durations = iteration_durations[-5:]
+                avg_duration = sum(recent_durations) / len(recent_durations)
+                remaining_iterations = stage.max_iterations - current_iteration
+                eta_s = int(remaining_iterations * avg_duration)
+            
+            # Get latest node execution time for display
+            latest_exec_time_s = None
+            if latest_node and hasattr(latest_node, 'exec_time') and latest_node.exec_time is not None:
+                latest_exec_time_s = int(latest_node.exec_time)
+            
+            # Map internal BFTS stage names to Stage_1 (all BFTS stages are part of experiments phase)
+            # Internal names like "1_initial_implementation_1_preliminary" → "Stage_1"
+            progress_data = {
+                "stage": "Stage_1",  # All BFTS substages are part of Stage_1 in the UI
+                "iteration": current_iteration,  # Total nodes attempted
+                "max_iterations": stage.max_iterations,
+                "progress": progress,  # Based on total attempts, not just good ones
+                "total_nodes": len(journal.nodes),
+                "buggy_nodes": len(journal.buggy_nodes),
+                "good_nodes": len(journal.good_nodes),
+                "best_metric": str(best_node.metric) if best_node else None,
+            }
+            
+            # Add timing information if available
+            if eta_s is not None:
+                progress_data["eta_s"] = eta_s
+            if latest_exec_time_s is not None:
+                progress_data["latest_iteration_time_s"] = latest_exec_time_s
+            
+            emit_event("ai.run.stage_progress", progress_data)
+            
+            # Also emit a log event describing what's happening
+            if len(journal.good_nodes) == 0 and len(journal.buggy_nodes) > 0:
+                emit_event("ai.run.log", {
+                    "message": f"Debugging failed implementations ({len(journal.buggy_nodes)} buggy nodes, retrying...)",
+                    "level": "info"
+                })
+            elif len(journal.good_nodes) > 0:
+                emit_event("ai.run.log", {
+                    "message": f"Found {len(journal.good_nodes)} working implementation(s), continuing...",
+                    "level": "info"
+                })
+            
+            # Emit node completion if we have a latest node
+            if latest_node_summary:
+                emit_event("ai.experiment.node_completed", {
+                    "stage": "Stage_1",  # All BFTS substages are part of Stage_1 in the UI
+                    "node_id": latest_node.id if hasattr(latest_node, 'id') else None,
+                    "summary": latest_node_summary
+                })
 
         except Exception as e:
             print(f"Error in step callback: {e}")

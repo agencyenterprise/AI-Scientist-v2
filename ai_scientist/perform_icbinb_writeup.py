@@ -994,16 +994,32 @@ def perform_writeup(
             plot_descriptions=plot_descriptions_str,
         )
 
-        response, msg_history = get_response_from_llm(
-            prompt=combined_prompt,
-            client=big_client,
-            model=big_client_model,
-            system_message=big_model_system_message,
-            print_debug=False,
-        )
+        try:
+            response, msg_history = get_response_from_llm(
+                prompt=combined_prompt,
+                client=big_client,
+                model=big_client_model,
+                system_message=big_model_system_message,
+                print_debug=False,
+            )
+        except Exception as e:
+            print(f"ERROR: Exception calling {big_client_model}: {e}")
+            print(f"Exception type: {type(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+
+        if not response or len(response) == 0:
+            print(f"ERROR: Empty response from {big_client_model}")
+            print("This likely means the model doesn't exist or your API key doesn't have access")
+            return False
 
         latex_code_match = re.search(r"```latex(.*?)```", response, re.DOTALL)
         if not latex_code_match:
+            print(f"ERROR: No LaTeX code block found in response from {big_client_model}")
+            print(f"Response length: {len(response)} chars")
+            print(f"Response preview (first 500 chars): {response[:500]}")
+            print(f"Response preview (last 500 chars): {response[-500:]}")
             return False
         updated_latex_code = latex_code_match.group(1).strip()
         with open(writeup_file, "w") as f:
@@ -1192,7 +1208,7 @@ If you believe you are done with reflection, simply say: "I am done"."""
         # Get new reflection_page_info
         reflection_page_info = get_reflection_page_info(reflection_pdf, page_limit)
 
-        final_reflection_prompt = """{reflection_page_info}
+        final_reflection_prompt = f"""{reflection_page_info}
 USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
         reflection_response, msg_history = get_response_from_llm(
             prompt=final_reflection_prompt,
@@ -1233,8 +1249,17 @@ USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
                 compile_latex(latex_folder, reflection_pdf)
             else:
                 print(f"No changes in reflection page step.")
+        else:
+            print(f"ERROR: No valid LaTeX code block found in final reflection")
+            print(f"Response length: {len(reflection_response)} chars")
+            print(f"Response preview: {reflection_response[:500] if len(reflection_response) > 0 else 'Empty'}")
+            return False
 
-        return osp.exists(reflection_pdf)
+        pdf_exists = osp.exists(reflection_pdf)
+        if not pdf_exists:
+            print(f"ERROR: Final PDF not found at {reflection_pdf}")
+            print("LaTeX compilation may have failed - check latex folder for errors")
+        return pdf_exists
 
     except Exception:
         print("EXCEPTION in perform_writeup:")

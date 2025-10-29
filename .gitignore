@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Ignore Python lib directories but not orchestrator/apps/web/lib
+/lib/
 lib64/
 parts/
 sdist/
@@ -194,3 +195,6 @@ final_papers/
 # HF
 cache/
 huggingface/
+
+# Local PDF backups (cleaned up periodically)
+local_pdf_backups/

@@ -16,6 +16,7 @@ from ai_scientist.llm import (
 
 from ai_scientist.tools.semantic_scholar import SemanticScholarSearchTool
 from ai_scientist.tools.base_tool import BaseTool
+from ai_scientist.perform_llm_review import load_paper
 
 # Create tool instances
 semantic_scholar_tool = SemanticScholarSearchTool()
@@ -211,7 +212,10 @@ def generate_temp_free_idea(
                         tool = tools_dict[action]
                         # Parse arguments
                         try:
-                            arguments_json = json.loads(arguments_text)
+                            # Use JSONDecoder to extract only the first valid JSON object
+                            # This handles cases where LLM outputs duplicate text after JSON
+                            decoder = json.JSONDecoder()
+                            arguments_json, _ = decoder.raw_decode(arguments_text.lstrip())
                         except json.JSONDecodeError:
                             raise ValueError(f"Invalid arguments JSON for {action}.")
 
@@ -225,7 +229,10 @@ def generate_temp_free_idea(
                     elif action == "FinalizeIdea":
                         # Parse arguments
                         try:
-                            arguments_json = json.loads(arguments_text)
+                            # Use JSONDecoder to extract only the first valid JSON object
+                            # This handles cases where LLM outputs duplicate text after JSON
+                            decoder = json.JSONDecoder()
+                            arguments_json, _ = decoder.raw_decode(arguments_text.lstrip())
                             idea = arguments_json.get("idea")
                             if not idea:
                                 raise ValueError("Missing 'idea' in arguments.")
@@ -273,8 +280,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o-2024-05-13",
-        choices=AVAILABLE_LLMS,
+        default="gpt-5",
         help="Model to use for AI Scientist.",
     )
     parser.add_argument(
@@ -287,7 +293,7 @@ if __name__ == "__main__":
         "--workshop-file",
         type=str,
         default="ideas/i_cant_believe_its_not_better.md",
-        help="Path to the workshop description file.",
+        help="Path to the workshop description file (markdown .md or PDF .pdf).",
     )
     parser.add_argument(
         "--num-reflections",
@@ -300,13 +306,21 @@ if __name__ == "__main__":
     # Create the LLM client
     client, client_model = create_client(args.model)
 
-    with open(args.workshop_file, "r") as f:
-        workshop_description = f.read()
-    print(f"Using workshop description from {args.workshop_file} for idea generation.")
-    print(f"Workshop description:\n{workshop_description}")
-
-    # Create output filename by replacing .md extension with .json
-    idea_fname = args.workshop_file.replace(".md", ".json")
+    # Load workshop description from PDF or markdown
+    if args.workshop_file.endswith('.pdf'):
+        workshop_description = load_paper(args.workshop_file)
+        print(f"Loaded full paper from PDF: {args.workshop_file}")
+        # Create output filename by replacing .pdf extension with .json
+        idea_fname = args.workshop_file.replace(".pdf", ".json")
+    else:
+        with open(args.workshop_file, "r") as f:
+            workshop_description = f.read()
+        print(f"Using workshop description from {args.workshop_file} for idea generation.")
+        # Create output filename by replacing .md extension with .json
+        idea_fname = args.workshop_file.replace(".md", ".json")
+    
+    print(f"Workshop description preview (first 500 chars):\n{workshop_description[:500]}...")
+    print(f"Total length: {len(workshop_description)} characters")
     print("Starting idea generation for", idea_fname)
     ideas = generate_temp_free_idea(
         idea_fname=idea_fname,
