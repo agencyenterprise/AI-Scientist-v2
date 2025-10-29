@@ -5,9 +5,6 @@ anthropic
 python-dotenv
 pymongo
 python-ulid
-# API Server
-fastapi
-uvicorn[standard]
 # Viz
 matplotlib
 pypdf
@@ -35,7 +32,6 @@ coolname
 jsonschema
 omegaconf
 requests
-streamlit
 psutil
 watchdog
 runpod

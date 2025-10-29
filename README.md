@@ -45,7 +45,7 @@ The AI Scientist-v2 now includes a **production-ready orchestration system** tha
 
 ### Quick Start
 
-See **[QUICK_START.md](QUICK_START.md)** for a 5-minute setup guide.
+See **[QUICK_START.md](docs/QUICK_START.md)** for a 5-minute setup guide.
 
 ```bash
 # 1. Deploy backend (Railway/Vercel)
@@ -89,9 +89,9 @@ Frontend (Next.js) → MongoDB ← Pod Workers (RunPod)
 - **Storage:** MongoDB (state), MinIO (artifacts)
 
 **Documentation:**
-- [QUICK_START.md](QUICK_START.md) - Get running in 5 minutes
-- [POD_WORKER_GUIDE.md](POD_WORKER_GUIDE.md) - Detailed architecture and troubleshooting
-- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - Technical details
+- [QUICK_START.md](docs/QUICK_START.md) - Get running in 5 minutes
+- [POD_WORKER_GUIDE.md](docs/POD_WORKER_GUIDE.md) - Detailed architecture and troubleshooting
+- [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) - Technical details
 
 **Tools:**
 - `python pod_worker.py` - Start pod worker
@@ -261,4 +261,3 @@ The tree search component implemented within the `ai_scientist` directory is bui
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=SakanaAI/AI-Scientist-v2&type=Date)](https://star-history.com/#SakanaAI/AI-Scientist-v2&Date)
-
