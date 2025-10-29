@@ -1,8 +1,9 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { Providers } from "./providers"
 import Link from "next/link"
+import { Sparkles } from "lucide-react"
+import { Providers } from "./providers"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -25,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <div className="flex min-h-screen flex-col">
             <Header />
-            <main className="flex-1 px-8 py-6">{children}</main>
+            <main className="flex-1 px-4 py-6 sm:px-8">{children}</main>
           </div>
         </Providers>
       </body>
@@ -40,15 +41,16 @@ function Header() {
         <Link href="/" className="text-lg font-semibold text-white">
           AI Scientist Orchestrator
         </Link>
-        <nav className="flex items-center gap-6 text-sm text-slate-300">
-          <Link className="hover:text-white" href="/runs">
-            Runs
-          </Link>
-          <Link className="hover:text-white" href="/hypotheses">
-            Hypotheses
-          </Link>
-          <Link className="hover:text-white" href="/validations/queue">
+        <nav className="flex items-center gap-4 text-sm text-slate-300">
+          <Link className="transition hover:text-white" href="/validations/queue">
             Validation Queue
+          </Link>
+          <Link
+            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-4 py-1.5 font-semibold text-slate-950 shadow-[0_18px_40px_-22px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300"
+            href="/overview"
+          >
+            <Sparkles className="h-4 w-4" />
+            Overview
           </Link>
         </nav>
       </div>

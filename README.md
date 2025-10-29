@@ -65,8 +65,9 @@ source ~/.bashrc && conda activate ai_scientist
 #       model names, and dataset paths match your run.
 #     - Confirm the pod's GPU is visible (e.g., `nvidia-smi`) because the worker
 #       includes GPU details in prompts and resource selection.
-#     - Set a Hugging Face Hub token (export HUGGINGFACE_HUB_TOKEN=...) if your
-#       experiments pull private models or datasets.
+#     - Set a Hugging Face Hub token (export HUGGINGFACE_HUB_TOKEN=...) even for
+#       public runs; our helpers call `huggingface_hub.login` at import time and a
+#       token also prevents anonymous rate limits.
 
 # 5. Start the worker
 cd /workspace/AI-Scientist-v2

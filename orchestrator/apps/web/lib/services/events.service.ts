@@ -361,6 +361,10 @@ async function transitionRunStatus(
     throw new Error(`Run ${runId} not found`)
   }
 
+  if (run.status === newStatus) {
+    return
+  }
+
   try {
     assertTransition(run.status, newStatus)
   } catch (error) {
@@ -373,4 +377,3 @@ async function transitionRunStatus(
 
   await updateRun(runId, { status: newStatus })
 }
-

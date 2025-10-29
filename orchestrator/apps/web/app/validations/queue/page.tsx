@@ -2,8 +2,7 @@ import { getValidationQueue } from "@/lib/data/validations"
 import type { Run } from "@/lib/schemas/run"
 import type { Hypothesis } from "@/lib/schemas/hypothesis"
 import type { Validation } from "@/lib/schemas/validation"
-import { StatusBadge } from "@/components/StatusBadge"
-import { ValidationSummary } from "@/components/ValidationSummary"
+import { ValidationQueueCard } from "@/components/ValidationQueueCard"
 import { Pagination } from "@/components/Pagination"
 import { extract } from "@/lib/utils/extract"
 
@@ -32,27 +31,14 @@ export default async function ValidationQueuePage({
         {items.length === 0 && (
           <p className="text-sm text-slate-500">No runs awaiting human validation.</p>
         )}
-        {items.map(({ run, hypothesis, validations }: { run: Run; hypothesis?: Hypothesis; validations: Validation[] }) => {
-          const auto = validations.find((validation: Validation) => validation.kind === "auto")
-          const human = validations.find((validation: Validation) => validation.kind === "human")
-          return (
-            <article
-              key={run._id}
-              className="rounded-lg border border-slate-800 bg-slate-900/40 p-6"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-100">Run {run._id}</h2>
-                  <p className="text-sm text-slate-300">{hypothesis?.title ?? "Unknown hypothesis"}</p>
-                </div>
-                <StatusBadge status={run.status} />
-              </div>
-              <div className="mt-4">
-                <ValidationSummary auto={auto} human={human} />
-              </div>
-            </article>
-          )
-        })}
+        {items.map(({ run, hypothesis, validations }: { run: Run; hypothesis?: Hypothesis; validations: Validation[] }) => (
+          <ValidationQueueCard
+            key={run._id}
+            run={run}
+            hypothesis={hypothesis}
+            validations={validations}
+          />
+        ))}
       </div>
       <Pagination total={total} page={page} pageSize={pageSize} />
     </div>

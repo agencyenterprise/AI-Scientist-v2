@@ -143,29 +143,31 @@ export function CreateHypothesisForm() {
         onConfirm={handleModalConfirm}
         onCancel={handleModalCancel}
       />
-      
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="text-sm font-medium text-slate-300" htmlFor="title">
-            Title
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-2">
+          <label className="text-sm font-semibold uppercase tracking-wide text-slate-300" htmlFor="title">
+            Hypothesis title
           </label>
           <input
             id="title"
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-50"
+            placeholder="Summarize the scientific direction in one line"
+            className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-base text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             disabled={extracting || pending}
             required
           />
         </div>
-        <div>
-          <label className="text-sm font-medium text-slate-300" htmlFor="idea">
-            Idea
+        <div className="space-y-2">
+          <label className="text-sm font-semibold uppercase tracking-wide text-slate-300" htmlFor="idea">
+            Hypothesis details
           </label>
           <textarea
             id="idea"
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-50"
-            rows={4}
+            placeholder="Explain the objective, expected insight, and why it matters. The more detail you include, the more context the AI Scientist has to work with."
+            className="w-full min-h-[220px] resize-none rounded-3xl border border-slate-800 bg-slate-950/70 px-5 py-4 text-base leading-relaxed text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50 md:min-h-[260px]"
+            rows={8}
             value={idea}
             onChange={(event) => setIdea(event.target.value)}
             disabled={extracting || pending}
@@ -173,35 +175,39 @@ export function CreateHypothesisForm() {
           />
         </div>
 
-        {/* OR Divider */}
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-700"></div>
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-slate-900/40 px-2 text-slate-400">OR</span>
-          </div>
+        <div className="relative py-4">
+          <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-slate-800/80 to-transparent" />
+          <span className="relative mx-auto flex w-fit items-center gap-2 rounded-full border border-slate-800/80 bg-slate-950 px-4 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            or
+          </span>
         </div>
 
-        {/* ChatGPT URL Input */}
-        <div>
-          <label className="text-sm font-medium text-slate-300" htmlFor="chatgpt-url">
-            Paste ChatGPT Share Link
-          </label>
-          <div className="mt-1 flex gap-2">
+        <div className="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <label
+              className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
+              htmlFor="chatgpt-url"
+            >
+              Paste chatgpt share link
+            </label>
+            <p className="text-xs text-slate-500">
+              We&apos;ll extract the title and summary automatically.
+            </p>
+          </div>
+          <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
             <input
               id="chatgpt-url"
               type="url"
               placeholder="https://chatgpt.com/share/..."
-              className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 disabled:opacity-50"
+              className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
               value={chatGptUrl}
               onChange={(event) => handleChatGptUrlChange(event.target.value)}
               disabled={extracting || pending}
             />
             {extracting && (
-              <div className="flex items-center px-3">
+              <div className="flex items-center px-1 text-sky-300">
                 <svg
-                  className="animate-spin h-5 w-5 text-sky-400"
+                  className="h-5 w-5 animate-spin"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -224,24 +230,24 @@ export function CreateHypothesisForm() {
             )}
           </div>
           {extracting && (
-            <p className="mt-1 text-xs text-sky-400">
+            <p className="mt-1 text-xs text-sky-300">
               Extracting and structuring conversation with AI...
             </p>
           )}
           {!extracting && (
             <p className="mt-1 text-xs text-slate-500">
-              Paste a shared ChatGPT conversation URL to automatically extract and structure your hypothesis
+              Paste a shared ChatGPT conversation URL to automatically extract and structure your hypothesis.
             </p>
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="submit"
-            className="rounded border border-sky-600/60 bg-sky-900/40 px-4 py-2 text-sm font-semibold text-sky-100 disabled:opacity-40"
+            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40"
             disabled={pending || extracting}
           >
-            Create Hypothesis
+            Launch hypothesis
           </button>
           {error && <span className="text-sm text-rose-400">{error}</span>}
         </div>
