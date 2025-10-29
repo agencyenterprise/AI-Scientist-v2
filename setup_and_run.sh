@@ -82,7 +82,7 @@ echo "Step 4: Setting up AI-Scientist-v2 repository..."
 
 REPO_DIR="/workspace/AI-Scientist-v2"
 REPO_URL="git@github.com-AI-Scientist-v2:agencyenterprise/AI-Scientist-v2.git"
-TARGET_BRANCH="feat/additions"
+TARGET_BRANCH="main"
 
 if [ -d "$REPO_DIR" ]; then
   echo "  Repository directory exists, updating..."
