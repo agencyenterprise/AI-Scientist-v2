@@ -48,17 +48,29 @@ The AI Scientist-v2 now includes a **production-ready orchestration system** tha
 See **[QUICK_START.md](docs/QUICK_START.md)** for a 5-minute setup guide.
 
 ```bash
-# 1. Deploy backend (Railway/Vercel)
-cd orchestrator/apps/web
-git push
+# 1. Launch a fresh RunPod GPU pod using the template that exposes SSH by default
+#    (the template pre-populates the SSH public key env var, so just bring your key).
 
-# 2. Set up RunPod worker
-cd AI-Scientist-v2
-# Create .env with MONGODB_URL, OPENAI_API_KEY, etc.
-bash init_runpod.sh
+# 2. SSH into the pod and bootstrap the worker environment
+curl -fsSL https://gist.githubusercontent.com/flaviokicis/f4248809521b2443b534ca077e042e08/raw/setup_and_run.sh -o /tmp/setup.sh && bash /tmp/setup.sh
 
-# 3. Create experiments via web UI
-# Visit https://your-app.railway.app/hypotheses
+# 3. Load the new Conda environment
+source ~/.bashrc && conda activate ai_scientist
+
+# 4. Copy your project .env into /workspace/AI-Scientist-v2/.env (or the repo root)
+#    so credentials like OPENAI_API_KEY and MONGODB_URL are available.
+
+# 4a. Double-check configuration:
+#     - Review /workspace/AI-Scientist-v2/bfts_config.yaml to ensure search limits,
+#       model names, and dataset paths match your run.
+#     - Confirm the pod's GPU is visible (e.g., `nvidia-smi`) because the worker
+#       includes GPU details in prompts and resource selection.
+#     - Set a Hugging Face Hub token (export HUGGINGFACE_HUB_TOKEN=...) if your
+#       experiments pull private models or datasets.
+
+# 5. Start the worker
+cd /workspace/AI-Scientist-v2
+source load_env.sh && python pod_worker.py
 ```
 
 ### Architecture
