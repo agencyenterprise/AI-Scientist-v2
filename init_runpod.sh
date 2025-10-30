@@ -71,7 +71,7 @@ pip install anthropic
 
 # Step 13: Install LaTeX and related system packages
 echo "Step 13: Installing LaTeX and system packages..."
-apt-get update && apt-get install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended texlive-bibtex-extra biber poppler-utils chktex
+apt-get update && apt-get install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended texlive-bibtex-extra biber poppler-utils chktex screen
 
 # Step 14: Configure automatic conda environment activation and persist env vars
 echo "Step 14: Configuring auto-activation of ai_scientist environment..."
@@ -211,4 +211,3 @@ echo ""
 # This makes pod_worker.py a top-level process, not a subprocess
 # Benefits: proper signal handling, clean process tree, no orphaned shells
 exec python pod_worker.py
-

@@ -25,7 +25,7 @@ POD_ID = os.environ.get("RUNPOD_POD_ID", socket.gethostname())
 # Git auto-update configuration
 GIT_AUTO_PULL_ENABLED = os.environ.get("GIT_AUTO_PULL_ENABLED", "true").lower() == "true"
 GIT_AUTO_PULL_INTERVAL = int(os.environ.get("GIT_AUTO_PULL_INTERVAL", "60"))  # seconds
-GIT_AUTO_PULL_BRANCH = os.environ.get("GIT_AUTO_PULL_BRANCH", "feat/additions")
+GIT_AUTO_PULL_BRANCH = os.environ.get("GIT_AUTO_PULL_BRANCH", "main")
 
 CURRENT_RUN_ID: Optional[str] = None
 CURRENT_STAGE: Optional[str] = None
