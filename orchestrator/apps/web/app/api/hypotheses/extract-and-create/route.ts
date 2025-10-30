@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
 
     // Create hypothesis immediately with extracting status
     const hypothesisId = randomUUID()
-    const enableIdeation = false
+    const enableIdeation = parsed.data.enableIdeation ?? false
     const reflections = parsed.data.reflections ?? 3
     const requestId = enableIdeation ? randomUUID() : undefined
 
@@ -265,11 +265,20 @@ export async function POST(req: NextRequest) {
     })
 
     // Return immediately so user can navigate away
-    return NextResponse.json({
-      success: true,
-      hypothesis,
-      message: "Hypothesis created. Extraction is processing in the background."
-    }, { status: 201 })
+    return NextResponse.json(
+      {
+        success: true,
+        hypothesis,
+        ideation: enableIdeation
+          ? {
+              requestId,
+              redirectUrl: `/ideation?hypothesisId=${hypothesisId}`
+            }
+          : undefined,
+        message: "Hypothesis created. Extraction is processing in the background."
+      },
+      { status: 201 }
+    )
 
   } catch (error) {
     console.error("ChatGPT extract-and-create error:", error)

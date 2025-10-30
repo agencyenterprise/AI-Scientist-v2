@@ -33,6 +33,18 @@ CURRENT_STAGE: Optional[str] = None
 event_emitter = CloudEventEmitter(CONTROL_PLANE_URL, POD_ID)
 
 
+class RunCanceledException(Exception):
+    """Raised when a run is canceled by the user during execution."""
+    pass
+
+
+def ensure_run_not_canceled(db_obj, run_id: str):
+    """Raise RunCanceledException if the run has been marked as canceled."""
+    run_doc = db_obj['runs'].find_one({"_id": run_id}, {"status": 1})
+    if run_doc and run_doc.get("status") == "CANCELED":
+        raise RunCanceledException(f"Run {run_id} marked as canceled")
+
+
 def _handle_experiment_event(run_id, emit_event_func, emitter_obj, db_obj, event_type: str, data: dict):
     """
     Module-level event handler for experiments that can be pickled for multiprocessing.
@@ -95,6 +107,9 @@ def _handle_experiment_event(run_id, emit_event_func, emitter_obj, db_obj, event
                 {"_id": run_id},
                 {"$set": {"currentStage": stage_data}}
             )
+
+            # Allow long-running Stage 1 loops to stop promptly on user-cancel.
+            ensure_run_not_canceled(db_obj, run_id)
         except Exception as e:
             print(f"Failed to update currentStage in MongoDB: {e}")
             traceback.print_exc()
@@ -1153,6 +1168,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         experiment_event_callback = partial(_handle_experiment_event, run_id, emit_event, emitter, db)
         
         # Stage 1: Run experiments
+        ensure_run_not_canceled(db, run_id)
         with StageContext("Stage_1", run_id):
             print(f"\n▶ Running Stage_1: Preliminary Investigation...")
             event_emitter.log(run_id, "Starting preliminary investigation (BFTS experiments)", "info", "Stage_1")
@@ -1194,6 +1210,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         print(f"✓ Using models from config: plot={plot_model}, small={small_model}, big={big_model}")
         
         # Stage 2: Aggregate plots
+        ensure_run_not_canceled(db, run_id)
         with StageContext("Stage_2", run_id):
             print("\n▶ Running Stage_2: Baseline Tuning (Plot Aggregation)...")
             event_emitter.log(run_id, "Starting plot aggregation", "info", "Stage_2")
@@ -1216,12 +1233,16 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 {"_id": run_id},
                 {"$set": {"currentStage.progress": 0.25}}
             )
+
+            ensure_run_not_canceled(db, run_id)
             
             print("\n📊 Aggregating plots...")
             event_emitter.log(run_id, f"Generating aggregator script using model: {plot_model}", "info", "Stage_2")
             
             from ai_scientist.perform_plotting import aggregate_plots
             aggregate_plots(base_folder=idea_dir, model=plot_model)
+
+            ensure_run_not_canceled(db, run_id)
             
             db['runs'].update_one(
                 {"_id": run_id},
@@ -1237,6 +1258,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 
                 # Upload figures as artifacts
                 for fig_file in final_figures:
+                    ensure_run_not_canceled(db, run_id)
                     fig_path = os.path.join(figures_dir, fig_file)
                     if os.path.isfile(fig_path):
                         upload_artifact(run_id, fig_path, "figure")
@@ -1251,6 +1273,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             emitter.flush()
         
         # Stage 3: Paper generation
+        ensure_run_not_canceled(db, run_id)
         with StageContext("Stage_3", run_id):
             print("\n▶ Running Stage_3: Research Agenda Execution (Paper Generation)...")
             event_emitter.log(run_id, "Starting paper generation", "info", "Stage_3")
@@ -1284,6 +1307,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 {"_id": run_id},
                 {"$set": {"currentStage.progress": 0.4}}
             )
+
+            ensure_run_not_canceled(db, run_id)
             
             event_emitter.log(run_id, f"Starting writeup generation using model: {big_model} (4 pages max)", "info", "Stage_3")
             
@@ -1293,6 +1318,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 page_limit=4,
                 citations_text=citations_text
             )
+
+            ensure_run_not_canceled(db, run_id)
             
             db['runs'].update_one(
                 {"_id": run_id},
@@ -1321,6 +1348,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                         pdf_path = os.path.join(idea_dir, pdf_file)
                         
                         # Get PDF file size
+                        ensure_run_not_canceled(db, run_id)
                         pdf_size_bytes = os.path.getsize(pdf_path)
                         pdf_size_mb = pdf_size_bytes / (1024 * 1024)
                         
@@ -1380,6 +1408,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             emitter.flush()
         
         # Stage 4: Auto-validation
+        ensure_run_not_canceled(db, run_id)
         with StageContext("Stage_4", run_id):
             print("\n▶ Running Stage_4: Ablation Studies (Auto-validation)...")
             event_emitter.log(run_id, "Starting auto-validation", "info", "Stage_4")
@@ -1390,12 +1419,19 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             )
             
             print("\n🤖 Running auto-validation...")
-            review_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
+            writeup_cfg = config.get("writeup", {}) or {}
+            review_model = (
+                writeup_cfg.get("review_model")
+                or writeup_cfg.get("big_model")
+                or writeup_cfg.get("small_model")
+                or "gpt-5-mini"
+            )
             event_emitter.validation_auto_started(run_id, review_model)
             event_emitter.log(run_id, f"Using review model: {review_model}", "info", "Stage_4")
             
             from ai_scientist.perform_llm_review import perform_review, load_paper
             from ai_scientist.llm import create_client
+            from ai_scientist.review_context import build_auto_review_context
             
             if pdf_files:
                 # Smart PDF selection: prefer final > highest numbered > any reflection
@@ -1409,6 +1445,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     {"$set": {"currentStage.progress": 0.2}}
                 )
                 
+                ensure_run_not_canceled(db, run_id)
                 paper_content = load_paper(pdf_path)
                 paper_length = len(paper_content) if paper_content else 0
                 event_emitter.log(run_id, f"Loaded paper content ({paper_length} characters)", "info", "Stage_4")
@@ -1418,28 +1455,55 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     {"$set": {"currentStage.progress": 0.4}}
                 )
                 
+                ensure_run_not_canceled(db, run_id)
+                review_context = build_auto_review_context(idea_dir, idea_json, paper_content or "")
+                event_emitter.log(
+                    run_id,
+                    f"Constructed review context keys: {list(review_context.keys())}",
+                    "info",
+                    "Stage_4",
+                )
+                
                 event_emitter.log(run_id, "Sending paper to LLM for review", "info", "Stage_4")
                 client, client_model = create_client(review_model)
-                review = perform_review(paper_content, client_model, client)
+                review = perform_review(
+                    paper_content,
+                    client_model,
+                    client,
+                    context=review_context,
+                    num_reviews_ensemble=3,
+                    num_reflections=2,
+                    temperature=0.55,
+                )
                 
                 db['runs'].update_one(
                     {"_id": run_id},
                     {"$set": {"currentStage.progress": 0.7}}
                 )
                 
+                ensure_run_not_canceled(db, run_id)
                 # Extract verdict and score from review if available
                 verdict = "fail"  # default to fail for safety
-                scores = {}
+                numeric_scores: Dict[str, float] = {}
                 
                 if isinstance(review, dict):
-                    # Extract scores first
-                    if "scores" in review:
-                        scores = review["scores"]
-                    elif "score" in review:
-                        scores = {"overall": review["score"]}
+                    score_fields = [
+                        "Originality",
+                        "Quality",
+                        "Clarity",
+                        "Significance",
+                        "Soundness",
+                        "Presentation",
+                        "Contribution",
+                        "Overall",
+                        "Confidence",
+                    ]
+                    for field in score_fields:
+                        value = review.get(field)
+                        if isinstance(value, (int, float)):
+                            numeric_scores[field] = float(value)
                     
-                    # Extract numeric scores for decision logic
-                    overall_score = review.get("Overall")
+                    overall_score = numeric_scores.get("Overall", review.get("Overall"))
                     
                     # Try to extract verdict from review (case-insensitive)
                     decision = None
@@ -1472,8 +1536,8 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                             pass
                     
                     # Log individual scores if available
-                    if isinstance(scores, dict):
-                        score_summary = ", ".join([f"{k}: {v}" for k, v in scores.items()])
+                    if numeric_scores:
+                        score_summary = ", ".join([f"{k}: {v}" for k, v in numeric_scores.items()])
                         event_emitter.log(run_id, f"Review scores: {score_summary}", "info", "Stage_4")
                 
                 event_emitter.log(run_id, f"Validation verdict: {verdict}", "info", "Stage_4")
@@ -1486,7 +1550,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 event_emitter.validation_auto_completed(
                     run_id,
                     verdict,
-                    scores,
+                    numeric_scores,
                     json.dumps(review) if isinstance(review, dict) else str(review)
                 )
                 
@@ -1599,6 +1663,39 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         print(f"✅ Experiment completed successfully: {run_id}")
         print(f"{'='*60}\n")
         
+    except RunCanceledException as e:
+        print(f"\n⚠️ Experiment canceled: {e}")
+        
+        db = mongo_client['ai-scientist']
+        runs_collection = db["runs"]
+        runs_collection.update_one(
+            {"_id": run_id},
+            {
+                "$set": {
+                    "status": "CANCELED",
+                    "canceledAt": datetime.utcnow()
+                }
+            }
+        )
+        
+        event_emitter.log(run_id, "Run canceled by user", "warning", CURRENT_STAGE or "unknown")
+        emit_event("ai.run.canceled", {
+            "reason": "User canceled run via UI",
+            "stage": CURRENT_STAGE or "unknown"
+        })
+        emitter.flush()
+        
+        if 'monitor_stop' in locals():
+            monitor_stop.set()
+            if 'monitor_thread' in locals():
+                monitor_thread.join(timeout=5)
+        if 'heartbeat_stop' in locals():
+            heartbeat_stop.set()
+            if 'heartbeat_thread' in locals():
+                heartbeat_thread.join(timeout=5)
+        
+        print(f"🛑 Run {run_id} canceled; pipeline exited cleanly.")
+
     except Exception as e:
         print(f"\n❌ Experiment failed: {e}", file=sys.stderr)
         traceback.print_exc()

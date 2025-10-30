@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       throw createBadRequest("Invalid payload", { issues: parsed.error.issues })
     }
 
-    const enableIdeation = false
+    const enableIdeation = parsed.data.enableIdeation ?? false
     const reflections = parsed.data.reflections ?? 3
     const hypothesisId = randomUUID()
     const now = new Date()
@@ -96,7 +96,16 @@ export async function POST(req: NextRequest) {
         updatedAt: now
       })
 
-      return NextResponse.json(hypothesis, { status: 201 })
+      return NextResponse.json(
+        {
+          hypothesis,
+          ideation: {
+            requestId,
+            redirectUrl: `/ideation?hypothesisId=${hypothesisId}`
+          }
+        },
+        { status: 201 }
+      )
     }
 
     const ideaJson = await generateIdeaJson(parsed.data.title, parsed.data.idea).catch(() => ({

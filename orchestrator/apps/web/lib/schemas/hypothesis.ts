@@ -23,7 +23,8 @@ export const HypothesisZ = z.object({
       error: z.string().optional(),
       ideas: z.array(IdeaJsonZ).optional()
     })
-    .optional()
+    .optional(),
+  hidden: z.boolean().optional()
 })
 
 export type Hypothesis = z.infer<typeof HypothesisZ>

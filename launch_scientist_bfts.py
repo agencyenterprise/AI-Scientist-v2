@@ -26,6 +26,7 @@ from ai_scientist.perform_icbinb_writeup import (
 from ai_scientist.perform_llm_review import perform_review, load_paper
 from ai_scientist.perform_vlm_review import perform_imgs_cap_ref_review
 from ai_scientist.utils.token_tracker import token_tracker
+from ai_scientist.review_context import build_auto_review_context
 
 
 def print_time():
@@ -425,7 +426,16 @@ if __name__ == "__main__":
             print("Paper found at: ", pdf_path)
             paper_content = load_paper(pdf_path)
             client, client_model = create_client(args.model_review)
-            review_text = perform_review(paper_content, client_model, client)
+            review_context = build_auto_review_context(idea_dir, None, paper_content or "")
+            review_text = perform_review(
+                paper_content,
+                client_model,
+                client,
+                context=review_context,
+                num_reviews_ensemble=3,
+                num_reflections=2,
+                temperature=0.55,
+            )
             review_img_cap_ref = perform_imgs_cap_ref_review(
                 client, client_model, pdf_path
             )

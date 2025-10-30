@@ -20,12 +20,16 @@ export async function listHypotheses(
 ): Promise<{ items: Hypothesis[]; total: number }> {
   const db = await getDb()
   const collection = db.collection<Hypothesis>(COLLECTION)
+  const query: Filter<Hypothesis> = { ...filter }
+  if (query.hidden === undefined) {
+    ;(query as any).hidden = { $ne: true }
+  }
   const cursor = collection
-    .find(filter)
+    .find(query)
     .sort({ createdAt: -1 })
     .skip((page - 1) * pageSize)
     .limit(pageSize)
-  const [items, total] = await Promise.all([cursor.toArray(), collection.countDocuments(filter)])
+  const [items, total] = await Promise.all([cursor.toArray(), collection.countDocuments(query)])
   return {
     items: items.map((item) => HypothesisZ.parse(item)),
     total

@@ -1,5 +1,8 @@
 import os
 import json
+from textwrap import dedent
+from typing import Any, Dict, Iterable, List, Optional
+
 import numpy as np
 from pypdf import PdfReader
 import pymupdf
@@ -11,16 +14,15 @@ from ai_scientist.llm import (
 )
 
 reviewer_system_prompt_base = (
-    "You are an AI researcher who is reviewing a paper that was submitted to a prestigious ML venue."
-    "Be critical and cautious in your decision."
+    "You are an experienced ML researcher completing a NeurIPS-style review. "
+    "Provide careful, evidence-based judgments that calibrate to historical scoring standards."
 )
-reviewer_system_prompt_neg = (
-    reviewer_system_prompt_base
-    + "If a paper is bad or you are unsure, give it bad scores and reject it."
+reviewer_system_prompt_strict = reviewer_system_prompt_base + (
+    " When information is missing or claims appear unsupported, lower the affected scores and explain why."
 )
-reviewer_system_prompt_pos = (
-    reviewer_system_prompt_base
-    + "If a paper is good or you are unsure, give it good scores and accept it."
+reviewer_system_prompt_balanced = reviewer_system_prompt_base + (
+    " Reward strong evidence and novelty, but also acknowledge incremental contributions when they are solid. "
+    "Do not default to middling scores—use the entire scale when justified."
 )
 
 template_instructions = """
@@ -64,82 +66,116 @@ This JSON will be automatically parsed, so ensure the format is precise.
 neurips_form = (
     """
 ## Review Form
-Below is a description of the questions you will be asked on the review form for each paper and some guidelines on what to consider when answering these questions.
-When writing your review, please keep in mind that after decisions have been made, reviews and meta-reviews of accepted papers and opted-in rejected papers will be made public.
+You are filling out the standard NeurIPS review. Summaries should be faithful, and numerical scores must reflect the evidence within the paper and the auxiliary context provided.
 
-1. Summary: Briefly summarize the paper and its contributions. This is not the place to critique the paper; the authors should generally agree with a well-written summary.
-  - Strengths and Weaknesses: Please provide a thorough assessment of the strengths and weaknesses of the paper, touching on each of the following dimensions:
-  - Originality: Are the tasks or methods new? Is the work a novel combination of well-known techniques? (This can be valuable!) Is it clear how this work differs from previous contributions? Is related work adequately cited
-  - Quality: Is the submission technically sound? Are claims well supported (e.g., by theoretical analysis or experimental results)? Are the methods used appropriate? Is this a complete piece of work or work in progress? Are the authors careful and honest about evaluating both the strengths and weaknesses of their work
-  - Clarity: Is the submission clearly written? Is it well organized? (If not, please make constructive suggestions for improving its clarity.) Does it adequately inform the reader? (Note that a superbly written paper provides enough information for an expert reader to reproduce its results.)
-  - Significance: Are the results important? Are others (researchers or practitioners) likely to use the ideas or build on them? Does the submission address a difficult task in a better way than previous work? Does it advance the state of the art in a demonstrable way? Does it provide unique data, unique conclusions about existing data, or a unique theoretical or experimental approach?
+1. **Summary** – State the main contributions factually. Authors should agree with this section.
+2. **Strengths & Weaknesses** – Evaluate the work along originality, technical quality, clarity, and significance. Cite concrete passages, experiments, or missing elements.
+3. **Questions for Authors** – Ask targeted questions whose answers could change your opinion or clarify uncertainty.
+4. **Limitations & Ethical Considerations** – Mention stated limitations and any missing discussion of societal impact. Suggest improvements when gaps exist.
+5. **Numerical Scores** – Use the scales below. Each score must align with the justification you provide.
+   - Originality, Quality, Clarity, Significance, Soundness, Presentation, Contribution: 1 (poor/low) – 4 (excellent/very high)
+   - Overall: 1–10 using the NeurIPS anchors (6 ≈ solid accept, 4–5 borderline, 1–3 reject, 7–8 strong accept, 9–10 award level)
+   - Confidence: 1 (guessing) – 5 (certain; checked details)
+6. **Decision** – Output only `Accept` or `Reject`, reflecting the balance of evidence. Borderline cases must still pick one side.
 
-2. Questions: Please list up and carefully describe any questions and suggestions for the authors. Think of the things where a response from the author can change your opinion, clarify a confusion or address a limitation. This can be very important for a productive rebuttal and discussion phase with the authors.
-
-3. Limitations: Have the authors adequately addressed the limitations and potential negative societal impact of their work? If not, please include constructive suggestions for improvement.
-In general, authors should be rewarded rather than punished for being up front about the limitations of their work and any potential negative societal impact. You are encouraged to think through whether any critical points are missing and provide these as feedback for the authors.
-
-4. Ethical concerns: If there are ethical issues with this paper, please flag the paper for an ethics review. For guidance on when this is appropriate, please review the NeurIPS ethics guidelines.
-
-5. Soundness: Please assign the paper a numerical rating on the following scale to indicate the soundness of the technical claims, experimental and research methodology and on whether the central claims of the paper are adequately supported with evidence.
-  4: excellent
-  3: good
-  2: fair
-  1: poor
-
-6. Presentation: Please assign the paper a numerical rating on the following scale to indicate the quality of the presentation. This should take into account the writing style and clarity, as well as contextualization relative to prior work.
-  4: excellent
-  3: good
-  2: fair
-  1: poor
-
-7. Contribution: Please assign the paper a numerical rating on the following scale to indicate the quality of the overall contribution this paper makes to the research area being studied. Are the questions being asked important? Does the paper bring a significant originality of ideas and/or execution? Are the results valuable to share with the broader NeurIPS community.
-  4: excellent
-  3: good
-  2: fair
-  1: poor
-
-8. Overall: Please provide an "overall score" for this submission. Choices:
-  10: Award quality: Technically flawless paper with groundbreaking impact on one or more areas of AI, with exceptionally strong evaluation, reproducibility, and resources, and no unaddressed ethical considerations.
-  9: Very Strong Accept: Technically flawless paper with groundbreaking impact on at least one area of AI and excellent impact on multiple areas of AI, with flawless evaluation, resources, and reproducibility, and no unaddressed ethical considerations.
-  8: Strong Accept: Technically strong paper with, with novel ideas, excellent impact on at least one area of AI or high-to-excellent impact on multiple areas of AI, with excellent evaluation, resources, and reproducibility, and no unaddressed ethical considerations.
-  7: Accept: Technically solid paper, with high impact on at least one sub-area of AI or moderate-to-high impact on more than one area of AI, with good-to-excellent evaluation, resources, reproducibility, and no unaddressed ethical considerations.
-  6: Weak Accept: Technically solid, moderate-to-high impact paper, with no major concerns with respect to evaluation, resources, reproducibility, ethical considerations.
-  5: Borderline accept: Technically solid paper where reasons to accept outweigh reasons to reject, e.g., limited evaluation. Please use sparingly.
-  4: Borderline reject: Technically solid paper where reasons to reject, e.g., limited evaluation, outweigh reasons to accept, e.g., good evaluation. Please use sparingly.
-  3: Reject: For instance, a paper with technical flaws, weak evaluation, inadequate reproducibility and incompletely addressed ethical considerations.
-  2: Strong Reject: For instance, a paper with major technical flaws, and/or poor evaluation, limited impact, poor reproducibility and mostly unaddressed ethical considerations.
-  1: Very Strong Reject: For instance, a paper with trivial results or unaddressed ethical considerations
-
-9. Confidence:  Please provide a "confidence score" for your assessment of this submission to indicate how confident you are in your evaluation. Choices:
-  5: You are absolutely certain about your assessment. You are very familiar with the related work and checked the math/other details carefully.
-  4: You are confident in your assessment, but not absolutely certain. It is unlikely, but not impossible, that you did not understand some parts of the submission or that you are unfamiliar with some pieces of related work.
-  3: You are fairly confident in your assessment. It is possible that you did not understand some parts of the submission or that you are unfamiliar with some pieces of related work. Math/other details were not carefully checked.
-  2: You are willing to defend your assessment, but it is quite likely that you did not understand the central parts of the submission or that you are unfamiliar with some pieces of related work. Math/other details were not carefully checked.
-  1: Your assessment is an educated guess. The submission is not in your area or the submission was difficult to understand. Math/other details were not carefully checked.
+Always ground your reasoning in the supplied paper, context snippets, or obvious missing elements. Reward rigorous negative results and honest discussion of limitations.
 """
     + template_instructions
 )
+
+CALIBRATION_GUIDE = dedent(
+    """
+Calibration guidance:
+- Use the full 1–4 and 1–10 scales. Do not default to 3/4 or 5/10 when unsure.
+- If experiments are missing or inconclusive, lower Quality and Significance rather than the entire review.
+- Strong clarity or reproducibility should be rewarded even if results are incremental.
+- Confidence should reflect how well the supplied context addresses your questions (e.g., lack of metrics → low confidence).
+"""
+)
+
+
+def _format_mapping_block(title: str, data: Dict[str, Any]) -> str:
+    if not data:
+        return ""
+    lines = [title + ":"]
+    for key, value in data.items():
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        lines.append(f"- {key}: {text}")
+    return "\n".join(lines)
+
+
+def _render_context_block(context: Optional[Dict[str, Any]]) -> str:
+    if not context:
+        return ""
+
+    blocks: list[str] = []
+
+    overview = context.get("idea_overview")
+    if isinstance(overview, dict):
+        block = _format_mapping_block("Idea Overview", overview)
+        if block:
+            blocks.append(block)
+
+    signals = context.get("paper_signals")
+    if isinstance(signals, dict):
+        block = _format_mapping_block("Automatic Checks", signals)
+        if block:
+            blocks.append(block)
+
+    section_highlights = context.get("section_highlights")
+    if isinstance(section_highlights, dict):
+        for section, text in section_highlights.items():
+            if not text:
+                continue
+            blocks.append(f"{section} Highlights:\n{text}")
+
+    novelty = context.get("novelty_review")
+    if novelty:
+        if isinstance(novelty, str):
+            blocks.append(f"Novelty Scan:\n{novelty}")
+        elif isinstance(novelty, Iterable):
+            formatted = "\n".join(f"- {item}" for item in novelty if item)
+            if formatted:
+                blocks.append(f"Novelty Scan:\n{formatted}")
+
+    additional = context.get("additional_notes")
+    if additional:
+        blocks.append(f"Additional Notes:\n{additional}")
+
+    blocks = [b for b in blocks if b]
+    return "\n\n".join(blocks)
 
 
 def perform_review(
     text,
     model,
     client,
-    num_reflections=1,
-    num_fs_examples=1,
-    num_reviews_ensemble=1,
-    temperature=0.75,
+    *,
+    context: Optional[Dict[str, Any]] = None,
+    num_reflections: int = 2,
+    num_fs_examples: int = 1,
+    num_reviews_ensemble: int = 3,
+    temperature: float = 0.55,
     msg_history=None,
-    return_msg_history=False,
-    reviewer_system_prompt=reviewer_system_prompt_neg,
-    review_instruction_form=neurips_form,
+    return_msg_history: bool = False,
+    reviewer_system_prompt: str = reviewer_system_prompt_balanced,
+    review_instruction_form: str = neurips_form,
+    calibration_notes: str = CALIBRATION_GUIDE,
 ):
+    context_block = _render_context_block(context)
+    base_prompt = review_instruction_form
+    if calibration_notes:
+        base_prompt += f"\n\nCalibration notes:\n{calibration_notes.strip()}\n"
+    if context_block:
+        base_prompt += f"\n\nContext for your evaluation:\n{context_block}\n"
+
     if num_fs_examples > 0:
         fs_prompt = get_review_fewshot_examples(num_fs_examples)
-        base_prompt = review_instruction_form + fs_prompt
-    else:
-        base_prompt = review_instruction_form
+        base_prompt += fs_prompt
 
     base_prompt += f"""
 Here is the paper you are asked to review:
@@ -147,6 +183,7 @@ Here is the paper you are asked to review:
 {text}
 ```"""
 
+    review: Optional[Dict[str, Any]] = None
     if num_reviews_ensemble > 1:
         llm_reviews, msg_histories = get_batch_responses_from_llm(
             base_prompt,
@@ -155,41 +192,46 @@ Here is the paper you are asked to review:
             system_message=reviewer_system_prompt,
             print_debug=False,
             msg_history=msg_history,
-            temperature=0.75,
+            temperature=temperature,
             n_responses=num_reviews_ensemble,
         )
-        parsed_reviews = []
+        parsed_reviews: List[Dict[str, Any]] = []
         for idx, rev in enumerate(llm_reviews):
             try:
-                parsed_reviews.append(extract_json_between_markers(rev))
-            except Exception as e:
-                print(f"Ensemble review {idx} failed: {e}")
-        parsed_reviews = [r for r in parsed_reviews if r is not None]
-        review = get_meta_review(model, client, temperature, parsed_reviews)
-        if review is None:
-            review = parsed_reviews[0]
-        for score, limits in [
-            ("Originality", (1, 4)),
-            ("Quality", (1, 4)),
-            ("Clarity", (1, 4)),
-            ("Significance", (1, 4)),
-            ("Soundness", (1, 4)),
-            ("Presentation", (1, 4)),
-            ("Contribution", (1, 4)),
-            ("Overall", (1, 10)),
-            ("Confidence", (1, 5)),
-        ]:
-            scores = []
-            for r in parsed_reviews:
-                if score in r and limits[0] <= r[score] <= limits[1]:
-                    scores.append(r[score])
-            if scores:
-                review[score] = int(round(np.mean(scores)))
-        msg_history = msg_histories[0][:-1]
-        msg_history += [
-            {
-                "role": "assistant",
-                "content": f"""
+                parsed = extract_json_between_markers(rev)
+            except Exception as exc:
+                print(f"Ensemble review {idx} failed: {exc}")
+                continue
+            if parsed:
+                parsed_reviews.append(parsed)
+
+        if parsed_reviews:
+            review = get_meta_review(model, client, temperature, parsed_reviews)
+            if review is None:
+                review = parsed_reviews[0]
+            for score, limits in [
+                ("Originality", (1, 4)),
+                ("Quality", (1, 4)),
+                ("Clarity", (1, 4)),
+                ("Significance", (1, 4)),
+                ("Soundness", (1, 4)),
+                ("Presentation", (1, 4)),
+                ("Contribution", (1, 4)),
+                ("Overall", (1, 10)),
+                ("Confidence", (1, 5)),
+            ]:
+                collected: List[float] = []
+                for parsed in parsed_reviews:
+                    value = parsed.get(score)
+                    if isinstance(value, (int, float)) and limits[0] <= value <= limits[1]:
+                        collected.append(float(value))
+                if collected:
+                    review[score] = float(np.round(np.mean(collected), 2))
+            msg_history = msg_histories[0][:-1]
+            msg_history += [
+                {
+                    "role": "assistant",
+                    "content": f"""
 THOUGHT:
 I will start by aggregating the opinions of {num_reviews_ensemble} reviewers that I previously obtained.
 
@@ -198,9 +240,12 @@ REVIEW JSON:
 {json.dumps(review)}
 ```
 """,
-            }
-        ]
-    else:
+                }
+            ]
+        else:
+            print("Warning: Failed to parse ensemble reviews; falling back to single review run.")
+
+    if review is None:
         llm_review, msg_history = get_response_from_llm(
             base_prompt,
             model=model,
@@ -212,9 +257,9 @@ REVIEW JSON:
         )
         review = extract_json_between_markers(llm_review)
 
-    if num_reflections > 1:
-        for j in range(num_reflections - 1):
-            text, msg_history = get_response_from_llm(
+    if num_reflections > 1 and review is not None:
+        for _ in range(num_reflections - 1):
+            reflection_text, msg_history = get_response_from_llm(
                 reviewer_reflection_prompt,
                 client=client,
                 model=model,
@@ -222,15 +267,15 @@ REVIEW JSON:
                 msg_history=msg_history,
                 temperature=temperature,
             )
-            review = extract_json_between_markers(text)
-            assert review is not None, "Failed to extract JSON from LLM output"
-            if "I am done" in text:
+            updated_review = extract_json_between_markers(reflection_text)
+            if updated_review is not None:
+                review = updated_review
+            if "I am done" in reflection_text:
                 break
 
     if return_msg_history:
         return review, msg_history
-    else:
-        return review
+    return review
 
 
 reviewer_reflection_prompt = """Round {current_round}/{num_reflections}.
