@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { HypothesisConfirmationModal } from "./HypothesisConfirmationModal"
 
+const IDEATION_LOCKED = true
+
 export function CreateHypothesisForm() {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -79,13 +81,13 @@ export function CreateHypothesisForm() {
     // Create hypothesis with background extraction
     setExtracting(true)
     try {
-      const ideationSelected = enableIdeation
+      const ideationSelected = enableIdeation && !IDEATION_LOCKED
       const response = await fetch("/api/hypotheses/extract-and-create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           url,
-          enableIdeation,
+          enableIdeation: enableIdeation && !IDEATION_LOCKED,
           reflections
         })
       })
@@ -136,10 +138,10 @@ export function CreateHypothesisForm() {
       const response = await fetch("/api/hypotheses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ 
-          title: confirmedTitle, 
+        body: JSON.stringify({
+          title: confirmedTitle,
           idea: confirmedDescription,
-          enableIdeation,
+          enableIdeation: enableIdeation && !IDEATION_LOCKED,
           reflections
         })
       })
@@ -154,7 +156,7 @@ export function CreateHypothesisForm() {
       setChatGptUrl("")
       setEnableIdeation(false)
       setReflections(3)
-      if (enableIdeation) {
+      if (enableIdeation && !IDEATION_LOCKED) {
         try {
           const summaryResponse = await fetch("/api/ideations/summary")
           if (summaryResponse.ok) {
@@ -182,7 +184,7 @@ export function CreateHypothesisForm() {
       const payload = {
         title,
         idea,
-        enableIdeation,
+        enableIdeation: enableIdeation && !IDEATION_LOCKED,
         reflections
       }
       const response = await fetch("/api/hypotheses", {
@@ -200,7 +202,7 @@ export function CreateHypothesisForm() {
       setChatGptUrl("")
       setEnableIdeation(false)
       setReflections(3)
-      if (enableIdeation) {
+      if (enableIdeation && !IDEATION_LOCKED) {
         try {
           const summaryResponse = await fetch("/api/ideations/summary")
           if (summaryResponse.ok) {
@@ -271,16 +273,24 @@ export function CreateHypothesisForm() {
                   ? "Queue is empty."
                   : `${ideationQueueSize} waiting in the ideation queue.`}
               </p>
+              {IDEATION_LOCKED && (
+                <p className="text-xs text-amber-400">
+                  Ideation is temporarily unavailable.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-4">
-              <label className="inline-flex w-fit items-center gap-3 rounded-full border border-slate-800/70 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-200 shadow-[0_12px_36px_-30px_rgba(14,165,233,0.8)]">
+              <label
+                className="inline-flex w-fit items-center gap-3 rounded-full border border-slate-800/60 bg-slate-800/40 px-4 py-2 text-sm font-medium text-slate-500 shadow-[0_12px_36px_-30px_rgba(14,165,233,0.2)] cursor-not-allowed"
+                title="Ideation is temporarily locked"
+              >
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded-sm border-slate-500 bg-slate-950 text-sky-400 focus:ring-2 focus:ring-sky-400"
-                  checked={enableIdeation}
-                  onChange={(event) => setEnableIdeation(event.target.checked)}
-                  disabled={extracting || pending}
+                  className="h-4 w-4 rounded-sm border-slate-600 bg-slate-900 text-slate-500"
+                  checked={false}
+                  readOnly
+                  disabled
                 />
                 Enable ideation
               </label>
@@ -288,16 +298,16 @@ export function CreateHypothesisForm() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-500">
                   <span>Reflections</span>
-                  <span className="font-semibold text-slate-200">{reflections}</span>
+                  <span className="font-semibold text-slate-400">{reflections}</span>
                 </div>
                 <input
                   type="range"
                   min={1}
                   max={10}
                   value={reflections}
-                  onChange={(event) => setReflections(Number.parseInt(event.target.value, 10))}
-                  disabled={!enableIdeation || extracting || pending}
-                  className="h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-800 accent-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  readOnly
+                  disabled
+                  className="h-1 w-full cursor-not-allowed appearance-none rounded-full bg-slate-800/50 accent-slate-600"
                 />
                 <div className="flex justify-between text-[10px] uppercase tracking-[0.3em] text-slate-500">
                   <span>1</span>
@@ -328,39 +338,42 @@ export function CreateHypothesisForm() {
             </p>
           </div>
           <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-            <input
-              id="chatgpt-url"
-              type="url"
-              placeholder="https://chatgpt.com/share/..."
-              className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
-              value={chatGptUrl}
-              onChange={(event) => handleChatGptUrlChange(event.target.value)}
-              disabled={extracting || pending}
-            />
-            {extracting && (
-              <div className="flex items-center px-1 text-sky-300">
-                <svg
-                  className="h-5 w-5 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              </div>
-            )}
+            <div className="relative flex-1">
+              <input
+                id="chatgpt-url"
+                type="url"
+                placeholder="https://chatgpt.com/share/..."
+                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 pr-32 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
+                value={chatGptUrl}
+                onChange={(event) => handleChatGptUrlChange(event.target.value)}
+                disabled={extracting || pending}
+              />
+              {extracting && (
+                <span className="pointer-events-none absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-sky-200">
+                  <svg
+                    className="h-3.5 w-3.5 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Extracting…
+                </span>
+              )}
+            </div>
           </div>
           {extracting && (
             <p className="mt-1 text-xs text-sky-300">

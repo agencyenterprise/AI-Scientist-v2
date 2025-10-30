@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
 
     // Create hypothesis immediately with extracting status
     const hypothesisId = randomUUID()
-    const enableIdeation = parsed.data.enableIdeation ?? false
+    const enableIdeation = false
     const reflections = parsed.data.reflections ?? 3
     const requestId = enableIdeation ? randomUUID() : undefined
 

@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       throw createBadRequest("Invalid payload", { issues: parsed.error.issues })
     }
 
-    const enableIdeation = parsed.data.enableIdeation ?? false
+    const enableIdeation = false
     const reflections = parsed.data.reflections ?? 3
     const hypothesisId = randomUUID()
     const now = new Date()
