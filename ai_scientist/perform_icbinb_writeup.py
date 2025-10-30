@@ -1005,7 +1005,6 @@ def perform_writeup(
         except Exception as e:
             print(f"ERROR: Exception calling {big_client_model}: {e}")
             print(f"Exception type: {type(e)}")
-            import traceback
             print(traceback.format_exc())
             return False
 
