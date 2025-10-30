@@ -55,7 +55,7 @@ const StageProgressZ = z.preprocess(
       goodNodes: z.number().int().optional(),
       buggyNodes: z.number().int().optional(),
       totalNodes: z.number().int().optional(),
-      bestMetric: z.string().optional(),
+      bestMetric: z.string().nullable().optional(),
       substage: z.string().optional(),
       substageFull: z.string().optional()
     })
