@@ -485,7 +485,7 @@ class MinimalAgent:
                 "Take the Memory section into consideration when proposing the design. ",
                 "The solution sketch should be 6-10 sentences. ",
                 "Don't suggest to do EDA.",
-                "Make sure to create synthetic data if needed.",
+                "Prioritize using real public datasets (e.g., from HuggingFace) when they suit the task, and only fall back to synthetic data if no suitable dataset is available or synthetic generation is essential to the proposed experiment.",
                 "",
             ],
             "Evaluation Metric(s)": self.evaluation_metrics,

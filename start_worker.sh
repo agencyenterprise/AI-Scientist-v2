@@ -3,8 +3,11 @@
 echo "🤖 Starting AI Scientist Pod Worker"
 echo ""
 
-# Source bashrc to get conda and environment variables
-source ~/.bashrc
+# Source shell profile to get conda/env vars
+if [ -f "$HOME/.bashrc" ]; then
+    # shellcheck source=/dev/null
+    source "$HOME/.bashrc"
+fi
 
 # Verify required environment variables
 if [ -z "$MONGODB_URL" ]; then
