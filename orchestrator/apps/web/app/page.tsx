@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { CreateHypothesisForm } from "@/components/CreateHypothesisForm"
 import { StartRunButton } from "@/components/StartRunButton"
 import { getHypotheses } from "@/lib/data/hypotheses"
@@ -11,7 +12,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 py-8 md:flex-row md:py-12">
-      <aside className="md:w-80 md:flex-shrink-0">
+      <aside className="md:w-[26rem] md:flex-shrink-0">
         <div className="relative flex h-[calc(100vh-5rem)] flex-col overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/60 shadow-[0_30px_90px_-45px_rgba(56,189,248,0.45)] md:sticky md:top-20">
           <div className="border-b border-slate-800/80 px-5 py-4">
             <div className="flex items-center gap-3">
@@ -36,6 +37,48 @@ export default async function HomePage() {
                     addSuffix: true
                   })
                   const isExtracting = hypothesis.extractionStatus === "extracting"
+                  const ideation = hypothesis.ideation
+                  const ideationStatus = ideation?.status
+                  const primaryIdea =
+                    ideationStatus === "COMPLETED" && Array.isArray(ideation?.ideas)
+                      ? ideation.ideas[0]
+                      : null
+                  const runDisabled =
+                    !hypothesis.ideaJson ||
+                    (!!ideationStatus && ideationStatus !== "COMPLETED")
+                  const ideationBadge = (() => {
+                    if (!ideationStatus) return null
+                    const baseClasses =
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                    switch (ideationStatus) {
+                      case "QUEUED":
+                        return (
+                          <span className={`${baseClasses} bg-sky-500/10 text-sky-200`}>
+                            ideation queued
+                          </span>
+                        )
+                      case "RUNNING":
+                        return (
+                          <span className={`${baseClasses} bg-violet-500/10 text-violet-200`}>
+                            ideation running
+                          </span>
+                        )
+                      case "COMPLETED":
+                        return (
+                          <span className={`${baseClasses} bg-emerald-500/10 text-emerald-200`}>
+                            ideation ready
+                          </span>
+                        )
+                      case "FAILED":
+                        return (
+                          <span className={`${baseClasses} bg-rose-500/10 text-rose-200`}>
+                            ideation failed
+                          </span>
+                        )
+                      default:
+                        return null
+                    }
+                  })()
 
                   return (
                     <li
@@ -44,9 +87,9 @@ export default async function HomePage() {
                     >
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-sky-500/10 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                       <div className="relative flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-slate-100">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold leading-snug text-slate-100 line-clamp-2 break-words">
                               {hypothesis.title}
                             </p>
                             {isExtracting && (
@@ -54,17 +97,52 @@ export default async function HomePage() {
                                 extracting
                               </span>
                             )}
+                            {ideationBadge}
                           </div>
-                          <p className="mt-2 line-clamp-4 whitespace-pre-line text-xs leading-relaxed text-slate-400">
-                            {hypothesis.idea}
-                          </p>
-                          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-800/80 bg-slate-900/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                          {primaryIdea ? (
+                            <div className="mt-2 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+                                Ideation highlight
+                              </p>
+                              <p className="text-sm font-semibold text-sky-200">
+                                {primaryIdea.Title}
+                              </p>
+                              <p className="line-clamp-4 whitespace-pre-line text-xs leading-relaxed text-slate-300">
+                                {primaryIdea["Short Hypothesis"]}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="mt-2 line-clamp-4 whitespace-pre-line text-xs leading-relaxed text-slate-400">
+                              {hypothesis.idea}
+                            </p>
+                          )}
+                          {ideationStatus === "FAILED" && ideation?.error && (
+                            <p className="mt-2 text-xs text-rose-300">
+                              {ideation.error}
+                            </p>
+                          )}
+                          <div className="mt-3 inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-slate-800/80 bg-slate-900/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
                             <Clock className="h-3 w-3 text-slate-400" />
                             {createdLabel}
                           </div>
                         </div>
-                        <div className="flex flex-shrink-0 items-end">
-                          <StartRunButton hypothesisId={hypothesis._id} />
+                        <div className="flex flex-shrink-0 flex-col items-end gap-2">
+                          <StartRunButton hypothesisId={hypothesis._id} disabled={runDisabled} />
+                          {runDisabled && (
+                            <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-slate-500">
+                              {ideationStatus && ideationStatus !== "COMPLETED"
+                                ? "Ideation pending"
+                                : "Idea not ready"}
+                            </span>
+                          )}
+                          {(ideationStatus || primaryIdea) && (
+                            <Link
+                              href={`/ideation?hypothesisId=${hypothesis._id}`}
+                              className="inline-flex items-center justify-center rounded-full border border-sky-500/50 bg-sky-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-sky-100 transition hover:border-sky-400 hover:text-white"
+                            >
+                              View ideas
+                            </Link>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -99,7 +177,7 @@ export default async function HomePage() {
             </div>
 
             <p className="text-xs text-slate-500">
-              Every hypothesis immediately queues a fresh experimentation run. You can monitor progress from the overview or runs pages anytime.
+              Launch ideation or experiments instantly—updates stream back here in real time and are mirrored across the overview and runs dashboards.
             </p>
           </div>
         </div>

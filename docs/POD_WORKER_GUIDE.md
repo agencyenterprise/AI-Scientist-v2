@@ -68,6 +68,20 @@ conda activate ai_scientist
 python pod_worker.py
 ```
 
+### 2a. Dedicated Ideation Workers
+
+Ideation now runs on its own queue so experimentation pods stay focused. To launch a worker that only processes ideation requests, pass the new mode flag:
+
+```bash
+# Run the worker in ideation-only mode
+./start_worker.sh --mode ideation
+
+# Equivalent manual invocation
+python pod_worker.py --mode ideation
+```
+
+You can also set `WORKER_MODE=ideation` in the environment before starting the worker. The default remains `experiment`, and `hybrid` will service both queues (ideation tasks are claimed first).
+
 ### 3. Environment Variables
 
 Required:
@@ -83,18 +97,19 @@ Optional:
 
 ### Experiment Flow
 
-1. **User creates hypothesis** via frontend
-2. **Frontend creates run** in MongoDB with `status: "QUEUED"`
-3. **Pod worker polls** MongoDB every 10 seconds
-4. **Worker atomically claims run** via `findOneAndUpdate`:
+1. **User creates hypothesis** via frontend.
+   - If *Enable ideation* is checked, the frontend creates an entry in `ideation_requests` and marks the hypothesis with `ideation.status = "QUEUED"`.
+   - Otherwise, the frontend immediately creates a run in MongoDB with `status: "QUEUED"` (legacy behaviour).
+2. **Ideation workers poll** `ideation_requests` (when running in `--mode ideation` or `--mode hybrid`). They call `perform_ideation_temp_free.py` (model `gpt-5-mini`) and push ideas back onto the hypothesis, selecting the first idea as `ideaJson`.
+3. **Experiment pods poll** the `runs` collection every ~10 seconds.
+4. **Experiment worker atomically claims a run** via `findOneAndUpdate`:
    ```python
    runs.find_one_and_update(
        {"status": "QUEUED", "claimedBy": None},
        {"$set": {"status": "SCHEDULED", "claimedBy": pod_id, ...}}
    )
    ```
-5. **Worker runs pipeline**:
-   - Check if hypothesis has `ideaJson`; if not, run ideation
+5. **Worker runs experimentation pipeline**:
    - Run 4 stages (Stage_1 through Stage_4)
    - Generate plots
    - Generate paper (LaTeX → PDF)
@@ -333,4 +348,3 @@ Questions? Issues?
 - Check MongoDB state
 - Check this guide's Troubleshooting section
 - Ask in #ai-scientist Slack channel
-

@@ -42,6 +42,9 @@ function Header() {
           AI Scientist Orchestrator
         </Link>
         <nav className="flex items-center gap-4 text-sm text-slate-300">
+          <Link className="transition hover:text-white" href="/ideation">
+            Ideation Queue
+          </Link>
           <Link className="transition hover:text-white" href="/validations/queue">
             Validation Queue
           </Link>

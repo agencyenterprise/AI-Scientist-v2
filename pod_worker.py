@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import time
@@ -10,7 +11,7 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from functools import partial
 from pymongo import MongoClient, ReturnDocument
 from ulid import ULID
@@ -540,6 +541,80 @@ def fetch_next_experiment(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]
     return run
 
 
+def fetch_next_ideation(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]:
+    db = mongo_client["ai-scientist"]
+    ideation_collection = db["ideation_requests"]
+    
+    request = ideation_collection.find_one_and_update(
+        {
+            "status": "QUEUED",
+            "$or": [
+                {"claimedBy": None},
+                {"claimedBy": {"$exists": False}}
+            ]
+        },
+        {
+            "$set": {
+                "status": "RUNNING",
+                "claimedBy": pod_id,
+                "claimedAt": datetime.utcnow(),
+                "startedAt": datetime.utcnow()
+            }
+        },
+        sort=[("createdAt", 1)],
+        return_document=ReturnDocument.AFTER
+    )
+    
+    return request
+
+
+def _slugify_name(text: str, fallback: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug or fallback
+
+
+def _coerce_string_list(value) -> List[str]:
+    if isinstance(value, list):
+        normalized = []
+        for item in value:
+            if isinstance(item, str):
+                candidate = item.strip()
+            else:
+                candidate = str(item).strip()
+            if candidate:
+                normalized.append(candidate)
+        return normalized
+    if isinstance(value, str):
+        lines = []
+        for line in value.replace("\r", "").split("\n"):
+            candidate = line.strip(" -*\t")
+            if candidate:
+                lines.append(candidate)
+        return lines
+    return []
+
+
+def _normalize_idea_payload(raw: Dict[str, Any], defaults: Dict[str, str]) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        raw = {}
+    idea = {
+        "Name": raw.get("Name") or raw.get("name") or defaults["name"],
+        "Title": raw.get("Title") or raw.get("title") or defaults["title"],
+        "Short Hypothesis": raw.get("Short Hypothesis")
+        or raw.get("Hypothesis")
+        or defaults["short"],
+        "Abstract": raw.get("Abstract") or defaults["abstract"],
+        "Experiments": _coerce_string_list(raw.get("Experiments")),
+        "Risk Factors and Limitations": _coerce_string_list(
+            raw.get("Risk Factors and Limitations")
+        )
+    }
+    related = raw.get("Related Work") or raw.get("related_work")
+    if isinstance(related, str) and related.strip():
+        idea["Related Work"] = related.strip()
+    return idea
+
+
 def fetch_writeup_retry(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]:
     db = mongo_client['ai-scientist']
     runs_collection = db["runs"]
@@ -750,6 +825,195 @@ def copy_best_solutions_to_root(idea_dir: str):
     except Exception as e:
         print(f"⚠️ Error copying best solutions: {e}")
         traceback.print_exc()
+
+
+def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
+    request_id = request["_id"]
+    hypothesis_id = request["hypothesisId"]
+    reflections = request.get("reflections", 3)
+    print(f"\n{'='*60}")
+    print(f"🧠 Starting ideation: {request_id}")
+    print(f"{'='*60}\n")
+    
+    db = mongo_client["ai-scientist"]
+    hypotheses_collection = db["hypotheses"]
+    ideation_collection = db["ideation_requests"]
+    
+    hypothesis = hypotheses_collection.find_one({"_id": hypothesis_id})
+    if not hypothesis:
+        error_msg = f"Hypothesis {hypothesis_id} not found for ideation"
+        print(f"❌ {error_msg}")
+        ideation_collection.update_one(
+            {"_id": request_id},
+            {
+                "$set": {
+                    "status": "FAILED",
+                    "failedAt": datetime.utcnow(),
+                    "error": error_msg,
+                    "updatedAt": datetime.utcnow()
+                }
+            }
+        )
+        return
+    
+    started_at = datetime.utcnow()
+    hypotheses_collection.update_one(
+        {"_id": hypothesis_id},
+        {
+            "$set": {
+                "ideation.status": "RUNNING",
+                "ideation.startedAt": started_at
+            }
+        }
+    )
+    ideation_collection.update_one(
+        {"_id": request_id},
+        {
+            "$set": {
+                "status": "RUNNING",
+                "startedAt": started_at,
+                "updatedAt": started_at
+            }
+        }
+    )
+    
+    title = hypothesis.get("title", "Research Direction")
+    idea_text = hypothesis.get("idea", "")
+    defaults = {
+        "name": _slugify_name(title, f"idea_{request_id[:8]}"),
+        "title": title,
+        "short": idea_text[:200] if idea_text else title,
+        "abstract": idea_text or title
+    }
+    
+    workspace_root = Path(__file__).parent
+    runtime_dir = workspace_root / "ai_scientist" / "ideas" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    
+    workshop_path = runtime_dir / f"{request_id}.md"
+    workshop_path.write_text(
+        f"# {title}\n\n"
+        "## Research Prompt\n"
+        f"{idea_text}\n\n"
+        "## Guidance\n"
+        "Generate a compelling research proposal expanding on the hypothesis above. "
+        "Use the ideation pipeline tools, perform literature search, and return the final idea JSON.\n",
+        encoding="utf-8"
+    )
+    
+    cmd = [
+        sys.executable or "python3",
+        "ai_scientist/perform_ideation_temp_free.py",
+        "--model",
+        "gpt-5-mini",
+        "--workshop-file",
+        str(workshop_path),
+        "--num-reflections",
+        str(reflections),
+        "--max-num-generations",
+        "1"
+    ]
+    
+    print(f"🛠️  Running ideation command: {' '.join(cmd)}")
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(workspace_root),
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Ideation script exited with code {result.returncode}"
+            )
+        
+        output_json_path = workshop_path.with_suffix(".json")
+        if not output_json_path.exists():
+            raise FileNotFoundError(
+                f"Ideation output not found: {output_json_path}"
+            )
+        
+        with open(output_json_path, "r", encoding="utf-8") as f:
+            raw_output = json.load(f)
+        
+        if isinstance(raw_output, dict):
+            raw_ideas = [raw_output]
+        elif isinstance(raw_output, list):
+            raw_ideas = raw_output
+        else:
+            raise ValueError("Unexpected ideation output format")
+        
+        normalized_ideas = [
+            _normalize_idea_payload(raw, defaults) for raw in raw_ideas
+        ]
+        
+        completed_at = datetime.utcnow()
+        ideation_collection.update_one(
+            {"_id": request_id},
+            {
+                "$set": {
+                    "status": "COMPLETED",
+                    "ideas": normalized_ideas,
+                    "completedAt": completed_at,
+                    "updatedAt": completed_at
+                },
+                "$unset": {
+                    "error": ""
+                }
+            }
+        )
+        
+        hypothesis_updates = {
+            "ideation.status": "COMPLETED",
+            "ideation.completedAt": completed_at,
+            "ideation.ideas": normalized_ideas,
+            "updatedAt": completed_at
+        }
+        if normalized_ideas:
+            hypothesis_updates["ideaJson"] = normalized_ideas[0]
+        
+        hypotheses_collection.update_one(
+            {"_id": hypothesis_id},
+            {"$set": hypothesis_updates, "$unset": {"ideation.error": ""}}
+        )
+        
+        print(f"\n✅ Ideation completed: {request_id} ({len(normalized_ideas)} ideas)\n")
+        
+    except Exception as e:
+        error_msg = str(e)
+        failed_at = datetime.utcnow()
+        print(f"\n❌ Ideation failed: {error_msg}\n", file=sys.stderr)
+        traceback.print_exc()
+        
+        ideation_collection.update_one(
+            {"_id": request_id},
+            {
+                "$set": {
+                    "status": "FAILED",
+                    "failedAt": failed_at,
+                    "error": error_msg,
+                    "updatedAt": failed_at
+                }
+            }
+        )
+        hypotheses_collection.update_one(
+            {"_id": hypothesis_id},
+            {
+                "$set": {
+                    "ideation.status": "FAILED",
+                    "ideation.failedAt": failed_at,
+                    "ideation.error": error_msg,
+                    "updatedAt": failed_at
+                }
+            }
+        )
 
 
 def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
@@ -1683,6 +1947,19 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="AI Scientist Pod Worker")
+    default_mode = os.environ.get("WORKER_MODE", "experiment").lower()
+    if default_mode not in {"experiment", "ideation", "hybrid"}:
+        default_mode = "experiment"
+    parser.add_argument(
+        "--mode",
+        choices=["experiment", "ideation", "hybrid"],
+        default=default_mode,
+        help="Worker task focus. 'ideation' dedicates the pod to idea generation."
+    )
+    args = parser.parse_args()
+    mode = args.mode
+    
     print(f"\n{'='*60}")
     print(f"🤖 AI Scientist Pod Worker")
     print(f"{'='*60}")
@@ -1693,6 +1970,7 @@ def main():
         print(f"Git Branch: {GIT_AUTO_PULL_BRANCH}")
     else:
         print(f"Git Auto-Pull: Disabled")
+    print(f"Mode: {mode.upper()}")
     print(f"{'='*60}\n")
     
     if not MONGODB_URL:
@@ -1708,53 +1986,71 @@ def main():
         print(f"❌ Failed to connect to MongoDB: {e}", file=sys.stderr)
         sys.exit(1)
     
-    print("🔍 Polling for experiments and writeup retries...\n")
+    if mode == "ideation":
+        print("🔍 Polling for ideation tasks...\n")
+    elif mode == "hybrid":
+        print("🔍 Polling for ideation tasks, experiments, and writeup retries...\n")
+    else:
+        print("🔍 Polling for experiments and writeup retries...\n")
     
-    # Track last git pull time for periodic updates during idle
     last_git_pull_time = time.time()
     
     while True:
         try:
-            run = fetch_next_experiment(mongo_client, POD_ID)
+            task_processed = False
             
-            if run:
-                run_experiment_pipeline(run, mongo_client)
-                print("\n✅ Experiment completed!")
-                
-                # Pull latest code after experiment completes
-                print("🔄 Checking for code updates...")
-                git_pull()
-                
-                # Reset the pull timer
-                last_git_pull_time = time.time()
-                
-                print("\n🔍 Polling for next task...")
-            else:
-                writeup_retry = fetch_writeup_retry(mongo_client, POD_ID)
-                if writeup_retry:
-                    perform_writeup_retry(writeup_retry, mongo_client)
-                    print("\n✅ Writeup retry completed!")
-                    
-                    # Pull latest code after writeup completes
+            if mode in ("ideation", "hybrid"):
+                ideation = fetch_next_ideation(mongo_client, POD_ID)
+                if ideation:
+                    run_ideation_pipeline(ideation, mongo_client)
+                    print("\n✅ Ideation task completed!")
                     print("🔄 Checking for code updates...")
                     git_pull()
-                    
-                    # Reset the pull timer
                     last_git_pull_time = time.time()
-                    
+                    print("\n🔍 Polling for next ideation task...")
+                    task_processed = True
+                    if mode == "ideation":
+                        continue
+            
+            if not task_processed and mode in ("experiment", "hybrid"):
+                run = fetch_next_experiment(mongo_client, POD_ID)
+                if run:
+                    run_experiment_pipeline(run, mongo_client)
+                    print("\n✅ Experiment completed!")
+                    print("🔄 Checking for code updates...")
+                    git_pull()
+                    last_git_pull_time = time.time()
                     print("\n🔍 Polling for next task...")
+                    task_processed = True
                 else:
-                    # Check if it's time to pull during idle
-                    current_time = time.time()
-                    time_since_last_pull = current_time - last_git_pull_time
-                    
-                    if GIT_AUTO_PULL_ENABLED and time_since_last_pull >= GIT_AUTO_PULL_INTERVAL:
+                    writeup_retry = fetch_writeup_retry(mongo_client, POD_ID)
+                    if writeup_retry:
+                        perform_writeup_retry(writeup_retry, mongo_client)
+                        print("\n✅ Writeup retry completed!")
+                        print("🔄 Checking for code updates...")
                         git_pull()
-                        last_git_pull_time = current_time
-                    
-                    print(f"⏱️  No experiments or retries available, waiting 10s...")
-                    time.sleep(10)
-                
+                        last_git_pull_time = time.time()
+                        print("\n🔍 Polling for next task...")
+                        task_processed = True
+            
+            if task_processed:
+                continue
+            
+            current_time = time.time()
+            time_since_last_pull = current_time - last_git_pull_time
+            
+            if GIT_AUTO_PULL_ENABLED and time_since_last_pull >= GIT_AUTO_PULL_INTERVAL:
+                git_pull()
+                last_git_pull_time = current_time
+            
+            if mode == "ideation":
+                print("⏱️  No ideation tasks available, waiting 10s...")
+            elif mode == "experiment":
+                print("⏱️  No experiments or retries available, waiting 10s...")
+            else:
+                print("⏱️  No ideation, experiment, or retry tasks available, waiting 10s...")
+            time.sleep(10)
+        
         except KeyboardInterrupt:
             print("\n🛑 Shutting down gracefully...")
             emitter.flush()
@@ -1767,4 +2063,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

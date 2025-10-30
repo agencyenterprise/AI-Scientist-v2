@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useState, useTransition } from "react"
+import { FormEvent, useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { HypothesisConfirmationModal } from "./HypothesisConfirmationModal"
 
@@ -12,11 +12,41 @@ export function CreateHypothesisForm() {
   const [chatGptUrl, setChatGptUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [enableIdeation, setEnableIdeation] = useState(false)
+  const [reflections, setReflections] = useState(3)
+  const [ideationQueueSize, setIdeationQueueSize] = useState(0)
   
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [modalTitle, setModalTitle] = useState("")
   const [modalDescription, setModalDescription] = useState("")
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchSummary = async () => {
+      try {
+        const res = await fetch("/api/ideations/summary")
+        if (!res.ok) {
+          return
+        }
+        const data = await res.json()
+        if (!cancelled) {
+          setIdeationQueueSize(data.counts?.QUEUED ?? 0)
+        }
+      } catch {
+        // Silently ignore summary fetch failures; UI will retry on next interval.
+      }
+    }
+
+    fetchSummary()
+    const interval = window.setInterval(fetchSummary, 10000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
 
   const validateChatGptUrl = (url: string): string | null => {
     if (!url.trim()) return null
@@ -49,10 +79,15 @@ export function CreateHypothesisForm() {
     // Create hypothesis with background extraction
     setExtracting(true)
     try {
+      const ideationSelected = enableIdeation
       const response = await fetch("/api/hypotheses/extract-and-create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({
+          url,
+          enableIdeation,
+          reflections
+        })
       })
 
       const data = await response.json()
@@ -67,6 +102,19 @@ export function CreateHypothesisForm() {
       setTitle("")
       setIdea("")
       setChatGptUrl("")
+      setEnableIdeation(false)
+      setReflections(3)
+      if (ideationSelected) {
+        try {
+          const summaryResponse = await fetch("/api/ideations/summary")
+          if (summaryResponse.ok) {
+            const summary = await summaryResponse.json()
+            setIdeationQueueSize(summary.counts?.QUEUED ?? ideationQueueSize)
+          }
+        } catch {
+          // Ignore refresh failures; background poll will update.
+        }
+      }
       router.push("/")
       router.refresh()
     } catch (err) {
@@ -90,7 +138,9 @@ export function CreateHypothesisForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ 
           title: confirmedTitle, 
-          idea: confirmedDescription 
+          idea: confirmedDescription,
+          enableIdeation,
+          reflections
         })
       })
       if (!response.ok) {
@@ -102,6 +152,19 @@ export function CreateHypothesisForm() {
       setTitle("")
       setIdea("")
       setChatGptUrl("")
+      setEnableIdeation(false)
+      setReflections(3)
+      if (enableIdeation) {
+        try {
+          const summaryResponse = await fetch("/api/ideations/summary")
+          if (summaryResponse.ok) {
+            const summary = await summaryResponse.json()
+            setIdeationQueueSize(summary.counts?.QUEUED ?? ideationQueueSize)
+          }
+        } catch {
+          // Ignore refresh failures; background poll will catch up.
+        }
+      }
       router.push("/")
       router.refresh()
     })
@@ -116,10 +179,16 @@ export function CreateHypothesisForm() {
     event.preventDefault()
     startTransition(async () => {
       setError(null)
+      const payload = {
+        title,
+        idea,
+        enableIdeation,
+        reflections
+      }
       const response = await fetch("/api/hypotheses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, idea })
+        body: JSON.stringify(payload)
       })
       if (!response.ok) {
         const message = await response.text()
@@ -129,6 +198,19 @@ export function CreateHypothesisForm() {
       setTitle("")
       setIdea("")
       setChatGptUrl("")
+      setEnableIdeation(false)
+      setReflections(3)
+      if (enableIdeation) {
+        try {
+          const summaryResponse = await fetch("/api/ideations/summary")
+          if (summaryResponse.ok) {
+            const summary = await summaryResponse.json()
+            setIdeationQueueSize(summary.counts?.QUEUED ?? ideationQueueSize)
+          }
+        } catch {
+          // Ignore refresh failures; periodic poll will update
+        }
+      }
       router.push("/")
       router.refresh()
     })
@@ -173,6 +255,57 @@ export function CreateHypothesisForm() {
             disabled={extracting || pending}
             required
           />
+        </div>
+        
+        <div className="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-5">
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Ideation assist
+              </p>
+              <p className="text-sm text-slate-300">
+                Let a dedicated worker draft research directions before we run experiments.
+              </p>
+              <p className="text-xs text-slate-500">
+                {ideationQueueSize === 0
+                  ? "Queue is empty."
+                  : `${ideationQueueSize} waiting in the ideation queue.`}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <label className="inline-flex w-fit items-center gap-3 rounded-full border border-slate-800/70 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-200 shadow-[0_12px_36px_-30px_rgba(14,165,233,0.8)]">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded-sm border-slate-500 bg-slate-950 text-sky-400 focus:ring-2 focus:ring-sky-400"
+                  checked={enableIdeation}
+                  onChange={(event) => setEnableIdeation(event.target.checked)}
+                  disabled={extracting || pending}
+                />
+                Enable ideation
+              </label>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-500">
+                  <span>Reflections</span>
+                  <span className="font-semibold text-slate-200">{reflections}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  value={reflections}
+                  onChange={(event) => setReflections(Number.parseInt(event.target.value, 10))}
+                  disabled={!enableIdeation || extracting || pending}
+                  className="h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-800 accent-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <div className="flex justify-between text-[10px] uppercase tracking-[0.3em] text-slate-500">
+                  <span>1</span>
+                  <span>10</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="relative py-4">

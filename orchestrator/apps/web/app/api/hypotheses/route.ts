@@ -4,15 +4,29 @@ import { createHypothesis, listHypotheses } from "@/lib/repos/hypotheses.repo"
 import { createBadRequest, isHttpError, toJsonResponse } from "@/lib/http/errors"
 import { enqueueRun } from "@/lib/services/runs.service"
 import { generateIdeaJson } from "@/lib/services/ideation.service"
+import { createIdeationRequest } from "@/lib/repos/ideations.repo"
+import { type IdeationStatus } from "@/lib/schemas/ideation"
 import { randomUUID } from "node:crypto"
 
 export const runtime = "nodejs"
 
-const CreateHypothesisSchema = z.object({
-  title: z.string().min(3),
-  idea: z.string().min(10),
-  createdBy: z.string().min(1).default("system")
-})
+const CreateHypothesisSchema = z
+  .object({
+    title: z.string().min(3),
+    idea: z.string().min(10),
+    createdBy: z.string().min(1).default("system"),
+    enableIdeation: z.boolean().optional().default(false),
+    reflections: z.coerce.number().int().min(1).max(10).default(3)
+  })
+  .refine(
+    (data) =>
+      !data.enableIdeation ||
+      (Number.isInteger(data.reflections) && data.reflections >= 1 && data.reflections <= 10),
+    {
+      message: "Ideation requires a reflection count between 1 and 10",
+      path: ["reflections"]
+    }
+  )
 
 const QuerySchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -52,8 +66,40 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       throw createBadRequest("Invalid payload", { issues: parsed.error.issues })
     }
-    
-    const ideaJson = {
+
+    const enableIdeation = parsed.data.enableIdeation ?? false
+    const reflections = parsed.data.reflections ?? 3
+    const hypothesisId = randomUUID()
+    const now = new Date()
+
+    if (enableIdeation) {
+      const requestId = randomUUID()
+      const hypothesis = await createHypothesis({
+        _id: hypothesisId,
+        title: parsed.data.title,
+        idea: parsed.data.idea,
+        createdAt: now,
+        createdBy: parsed.data.createdBy,
+        ideation: {
+          requestId,
+          status: "QUEUED" as IdeationStatus,
+          reflections
+        }
+      })
+
+      await createIdeationRequest({
+        _id: requestId,
+        hypothesisId,
+        status: "QUEUED",
+        reflections,
+        createdAt: now,
+        updatedAt: now
+      })
+
+      return NextResponse.json(hypothesis, { status: 201 })
+    }
+
+    const ideaJson = await generateIdeaJson(parsed.data.title, parsed.data.idea).catch(() => ({
       Name: parsed.data.title.toLowerCase().replace(/\s+/g, "_"),
       Title: parsed.data.title,
       "Short Hypothesis": parsed.data.idea.slice(0, 200),
@@ -67,19 +113,19 @@ export async function POST(req: NextRequest) {
         "Computational complexity",
         "Generalization to other domains"
       ]
-    }
-    
+    }))
+
     const hypothesis = await createHypothesis({
-      _id: randomUUID(),
+      _id: hypothesisId,
       title: parsed.data.title,
       idea: parsed.data.idea,
-      ideaJson: ideaJson,
-      createdAt: new Date(),
+      ideaJson,
+      createdAt: now,
       createdBy: parsed.data.createdBy
     })
-    
+
     await enqueueRun(hypothesis._id)
-    
+
     return NextResponse.json(hypothesis, { status: 201 })
   } catch (error) {
     return handleError(error)
