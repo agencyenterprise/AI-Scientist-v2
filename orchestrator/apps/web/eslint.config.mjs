@@ -4,18 +4,31 @@ import tsParser from "@typescript-eslint/parser"
 import next from "@next/eslint-plugin-next"
 import globals from "globals"
 import { fileURLToPath } from "node:url"
-import { dirname } from "node:path"
-import { FlatCompat } from "@eslint/eslintrc"
 
-const __dirname = dirname(fileURLToPath(new URL(".", import.meta.url)))
-const compat = new FlatCompat({ baseDirectory: __dirname })
+const __dirname = fileURLToPath(new URL(".", import.meta.url))
+const nextCoreWebVitals = next.configs["core-web-vitals"]
 
 export default [
   {
     ignores: ["node_modules", ".next", "dist"]
   },
   js.configs.recommended,
-  ...compat.extends("eslint-config-next/core-web-vitals"),
+  {
+    plugins: {
+      "@next/next": next
+    },
+    rules: {
+      ...nextCoreWebVitals.rules
+    }
+  },
+  {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
+    }
+  },
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {

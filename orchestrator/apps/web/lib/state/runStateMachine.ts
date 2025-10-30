@@ -12,7 +12,7 @@ const TRANSITIONS: TransitionGraph = {
   HUMAN_VALIDATED: [],
   FAILED: [],
   CANCELED: [],
-  COMPLETED: []
+  COMPLETED: ["AUTO_VALIDATING", "AWAITING_HUMAN", "HUMAN_VALIDATED", "FAILED", "CANCELED"]
 }
 
 export function assertTransition(from: RunStatus, to: RunStatus): void {

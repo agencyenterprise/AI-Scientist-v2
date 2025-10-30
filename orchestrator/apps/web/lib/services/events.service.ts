@@ -131,7 +131,10 @@ async function handleRunStarted(
       region: data.region
     },
     startedAt: new Date(event.time),
-    lastHeartbeat: new Date(event.time)
+    lastHeartbeat: new Date(event.time),
+    errorType: null,
+    errorMessage: null,
+    errorTraceback: null
   })
 }
 
@@ -166,7 +169,8 @@ async function handleRunFailed(
   await updateRun(runId, {
     failedAt: new Date(event.time),
     errorType: data.code,
-    errorMessage: data.message
+    errorMessage: data.message,
+    errorTraceback: data.traceback ?? null
   })
 }
 
@@ -361,6 +365,10 @@ async function transitionRunStatus(
     throw new Error(`Run ${runId} not found`)
   }
 
+  if (run.status === newStatus) {
+    return
+  }
+
   try {
     assertTransition(run.status, newStatus)
   } catch (error) {
@@ -373,4 +381,3 @@ async function transitionRunStatus(
 
   await updateRun(runId, { status: newStatus })
 }
-

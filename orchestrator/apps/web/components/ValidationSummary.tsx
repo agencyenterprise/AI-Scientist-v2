@@ -101,7 +101,10 @@ function ValidationCard({
               )}
             </div>
             <button
-              onClick={() => setShowModal(true)}
+              onClick={(event) => {
+                event.stopPropagation()
+                setShowModal(true)
+              }}
               className="rounded-lg border border-sky-700 bg-sky-900/40 px-4 py-2 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-900/60 hover:text-sky-200"
             >
               View Details

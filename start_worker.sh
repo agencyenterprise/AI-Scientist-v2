@@ -32,5 +32,4 @@ echo ""
 echo "Press Ctrl+C to stop the worker gracefully."
 echo ""
 
-python pod_worker.py
-
+python pod_worker.py "$@"

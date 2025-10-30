@@ -11,7 +11,7 @@ interface ErrorDisplayProps {
 export function ErrorDisplay({ run }: ErrorDisplayProps) {
   const router = useRouter()
   const [showTraceback, setShowTraceback] = useState(false)
-  const [traceback, setTraceback] = useState<string | null>(null)
+  const [traceback, setTraceback] = useState<string | null>(run.errorTraceback ?? null)
   const [loadingTraceback, setLoadingTraceback] = useState(false)
   const [pending, startTransition] = useTransition()
   const [retryError, setRetryError] = useState<string | null>(null)
@@ -28,16 +28,21 @@ export function ErrorDisplay({ run }: ErrorDisplayProps) {
 
     setLoadingTraceback(true)
     try {
-      const response = await fetch(`/api/runs/${run._id}/events?type=run.failed`)
+      const response = await fetch(`/api/runs/${run._id}/events?type=ai.run.failed`)
       if (!response.ok) {
         throw new Error("Failed to fetch traceback")
       }
       
       const data = await response.json()
-      const failedEvent = data.items?.find((e: any) => e.type === "run.failed")
+      const failedEvent = data.items?.find(
+        (e: any) => e.type === "ai.run.failed" || e.type === "run.failed"
+      )
       
       if (failedEvent?.data?.traceback) {
         setTraceback(failedEvent.data.traceback)
+        setShowTraceback(true)
+      } else if (run.errorTraceback) {
+        setTraceback(run.errorTraceback)
         setShowTraceback(true)
       } else {
         setTraceback("No traceback available")
@@ -157,4 +162,3 @@ export function ErrorDisplay({ run }: ErrorDisplayProps) {
     </>
   )
 }
-

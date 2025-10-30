@@ -1,5 +1,5 @@
 import { countRunsByStatus, getHypothesisActivity, listRuns } from "../repos/runs.repo"
-import { findHypothesesByIds } from "../repos/hypotheses.repo"
+import { findHypothesesByIds, listHypotheses } from "../repos/hypotheses.repo"
 import { type RunStatus } from "../state/constants"
 import { serializeDates } from "../utils/serialize"
 import { getEnv } from "../config/env"
@@ -72,10 +72,11 @@ export async function getOverviewData() {
   // Check for stale runs (lightweight, cached check)
   await checkForStaleRuns()
   const env = getEnv()
-  const [{ items: latestRuns }, counts, activity] = await Promise.all([
+  const [{ items: latestRuns }, counts, activity, allHypotheses] = await Promise.all([
     listRuns({}, 1, 10),
     countRunsByStatus(DASHBOARD_STATUSES),
-    getHypothesisActivity(5)
+    getHypothesisActivity(5),
+    listHypotheses({}, 1, 200)
   ])
 
   const hypothesisIds = new Set<string>()
@@ -100,6 +101,10 @@ export async function getOverviewData() {
         item.hypothesis !== undefined && !item.hypothesis.title.endsWith(" Test")
     )
 
+  const filteredHypotheses = allHypotheses.items.filter(
+    (hypothesis) => !hypothesis.title.endsWith(" Test")
+  )
+
   return serializeDates({
     counts,
     queueStatus: {
@@ -111,6 +116,10 @@ export async function getOverviewData() {
       run,
       hypothesis: hypothesisById.get(run.hypothesisId)
     })),
-    topHypotheses
+    topHypotheses,
+    hypotheses: filteredHypotheses.map((hypothesis) => ({
+      _id: hypothesis._id,
+      title: hypothesis.title
+    }))
   })
 }

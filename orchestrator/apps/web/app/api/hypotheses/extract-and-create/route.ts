@@ -5,18 +5,34 @@ import { randomUUID } from "node:crypto"
 import { ChatGPTSharedExtractor } from "@/lib/services/chatgpt-extractor.service"
 import { getEnv } from "@/lib/config/env"
 import { createHypothesis, updateHypothesis } from "@/lib/repos/hypotheses.repo"
+import { createIdeationRequest } from "@/lib/repos/ideations.repo"
 import { enqueueRun } from "@/lib/services/runs.service"
 
 export const runtime = "nodejs"
 
-const ExtractAndCreateSchema = z.object({
-  url: z.string().url().refine(
-    (url) => url.includes('chatgpt.com') && url.includes('/share/'),
+const ExtractAndCreateSchema = z
+  .object({
+    url: z
+      .string()
+      .url()
+      .refine(
+        (url) => url.includes("chatgpt.com") && url.includes("/share/"),
+        {
+          message: "URL must be a shared ChatGPT conversation (must contain chatgpt.com/share/)"
+        }
+      ),
+    enableIdeation: z.boolean().optional().default(false),
+    reflections: z.coerce.number().int().min(1).max(10).optional()
+  })
+  .refine(
+    (data) =>
+      !data.enableIdeation ||
+      (data.reflections !== undefined && Number.isInteger(data.reflections) && data.reflections >= 1),
     {
-      message: "URL must be a shared ChatGPT conversation (must contain chatgpt.com/share/)"
+      message: "Ideation requires a reflection count between 1 and 10",
+      path: ["reflections"]
     }
   )
-})
 
 const HYPOTHESIS_EXTRACTION_PROMPT = `You are a scientific reasoning assistant. Your goal is to read a conversation transcript and turn it into a precise experimental hypothesis and description that a technical team can later use to design and run experiments.
 
@@ -102,7 +118,17 @@ async function structureHypothesisWithLLM(conversationText: string): Promise<{
   }
 }
 
-async function processExtractionInBackground(hypothesisId: string, url: string) {
+type ExtractionOptions = {
+  enableIdeation?: boolean
+  reflections?: number
+  requestId?: string
+}
+
+async function processExtractionInBackground(
+  hypothesisId: string,
+  url: string,
+  options: ExtractionOptions = {}
+) {
   try {
     const extractor = new ChatGPTSharedExtractor()
     const extractedText = await extractor.extractPlainText(url)
@@ -118,8 +144,7 @@ async function processExtractionInBackground(hypothesisId: string, url: string) 
     // Structure the conversation using LLM
     const structured = await structureHypothesisWithLLM(extractedText)
 
-    // Build ideaJson
-    const ideaJson = {
+    const baseIdeaJson = {
       Name: structured.title.toLowerCase().replace(/\s+/g, "_"),
       Title: structured.title,
       "Short Hypothesis": structured.description.slice(0, 200),
@@ -135,22 +160,59 @@ async function processExtractionInBackground(hypothesisId: string, url: string) 
       ]
     }
 
-    // Update the hypothesis with extracted content
-    await updateHypothesis(hypothesisId, {
+    const enableIdeation = options.enableIdeation ?? false
+    const reflections = options.reflections ?? 3
+    const requestId = options.requestId
+
+    const hypothesisUpdate: Record<string, any> = {
       title: structured.title,
       idea: structured.description,
-      ideaJson,
       extractionStatus: "completed"
-    })
+    }
 
-    // Enqueue a run for the hypothesis
-    await enqueueRun(hypothesisId)
+    if (!enableIdeation) {
+      hypothesisUpdate.ideaJson = baseIdeaJson
+    }
+
+    await updateHypothesis(hypothesisId, hypothesisUpdate)
+
+    if (enableIdeation && requestId) {
+      const now = new Date()
+      await createIdeationRequest({
+        _id: requestId,
+        hypothesisId,
+        status: "QUEUED",
+        reflections,
+        createdAt: now,
+        updatedAt: now
+      })
+      await updateHypothesis(hypothesisId, {
+        ideation: {
+          requestId,
+          status: "QUEUED",
+          reflections
+        }
+      })
+    } else {
+      await enqueueRun(hypothesisId)
+    }
 
   } catch (error) {
     console.error("Background extraction error:", error)
     await updateHypothesis(hypothesisId, {
       extractionStatus: "failed",
-      idea: error instanceof Error ? error.message : "Unknown extraction error"
+      idea: error instanceof Error ? error.message : "Unknown extraction error",
+      ...(options.enableIdeation
+        ? {
+            ideation: {
+              requestId: options.requestId ?? randomUUID(),
+              status: "FAILED",
+              reflections: options.reflections ?? 3,
+              failedAt: new Date(),
+              error: error instanceof Error ? error.message : "Unknown extraction error"
+            }
+          }
+        : {})
     })
   }
 }
@@ -170,6 +232,10 @@ export async function POST(req: NextRequest) {
 
     // Create hypothesis immediately with extracting status
     const hypothesisId = randomUUID()
+    const enableIdeation = false
+    const reflections = parsed.data.reflections ?? 3
+    const requestId = enableIdeation ? randomUUID() : undefined
+
     const hypothesis = await createHypothesis({
       _id: hypothesisId,
       title: "Extracting from ChatGPT...",
@@ -177,11 +243,24 @@ export async function POST(req: NextRequest) {
       createdAt: new Date(),
       createdBy: "chatgpt",
       chatGptUrl: parsed.data.url,
-      extractionStatus: "extracting"
+      extractionStatus: "extracting",
+      ...(enableIdeation
+        ? {
+            ideation: {
+              requestId: requestId!,
+              status: "QUEUED",
+              reflections
+            }
+          }
+        : {})
     })
 
     // Trigger background processing (don't await)
-    processExtractionInBackground(hypothesisId, parsed.data.url).catch(err => {
+    processExtractionInBackground(hypothesisId, parsed.data.url, {
+      enableIdeation,
+      reflections,
+      requestId
+    }).catch(err => {
       console.error("Failed to process extraction in background:", err)
     })
 
@@ -208,4 +287,3 @@ export async function POST(req: NextRequest) {
     )
   }
 }
-

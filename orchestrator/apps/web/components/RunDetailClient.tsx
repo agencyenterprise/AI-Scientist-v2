@@ -119,15 +119,15 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
   
   // Only allow writeup retry if:
   // 1. Run completed successfully (always allow)
-  // 2. Run failed but reached Stage 4 (where writeup happens)
+  // 2. Run failed but made it to paper generation (Stage 3 or beyond)
   const currentStageIndex = detail.run.currentStage?.name 
     ? STAGES.indexOf(detail.run.currentStage.name)
     : -1
-  const reachedStage4 = currentStageIndex >= STAGES.indexOf("Stage_4")
+  const reachedPaperStage = currentStageIndex >= STAGES.indexOf("Stage_3")
   
   const canRetryWriteup = 
     detail.run.status === "COMPLETED" || 
-    (detail.run.status === "FAILED" && reachedStage4)
+    (detail.run.status === "FAILED" && reachedPaperStage)
   
   const isTerminal = TERMINAL_STATES.includes(detail.run.status)
 
