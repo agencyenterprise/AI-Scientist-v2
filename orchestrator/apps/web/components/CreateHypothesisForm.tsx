@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState, useTransition } from "reac
 import { useRouter } from "next/navigation"
 import { HypothesisConfirmationModal } from "./HypothesisConfirmationModal"
 
-const IDEATION_LOCKED = false
+const IDEATION_LOCKED = true
 
 export function CreateHypothesisForm() {
   const router = useRouter()
