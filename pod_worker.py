@@ -560,6 +560,15 @@ def fetch_next_ideation(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]:
     db = mongo_client["ai-scientist"]
     ideation_collection = db["ideation_requests"]
     
+    try:
+        queued_count = ideation_collection.count_documents({"status": "QUEUED"})
+        running_count = ideation_collection.count_documents({"status": "RUNNING"})
+        print(
+            f"[ideation-debug] DB=ai-scientist queued={queued_count} running={running_count} pod={pod_id}"
+        )
+    except Exception as e:
+        print(f"[ideation-debug] Failed to count ideation requests: {e}")
+    
     request = ideation_collection.find_one_and_update(
         {
             "status": "QUEUED",
@@ -579,6 +588,15 @@ def fetch_next_ideation(mongo_client, pod_id: str) -> Optional[Dict[str, Any]]:
         sort=[("createdAt", 1)],
         return_document=ReturnDocument.AFTER
     )
+    
+    if request:
+        print(
+            "[ideation-debug] Claimed ideation request "
+            f"id={request.get('_id')} hypothesisId={request.get('hypothesisId')} "
+            f"reflections={request.get('reflections')} createdAt={request.get('createdAt')}"
+        )
+    else:
+        print("[ideation-debug] No ideation request claimed on this poll")
     
     return request
 
@@ -849,6 +867,11 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     print(f"\n{'='*60}")
     print(f"🧠 Starting ideation: {request_id}")
     print(f"{'='*60}\n")
+    print(
+        f"[ideation-debug] Starting pipeline request_id={request_id} "
+        f"hypothesis_id={hypothesis_id} reflections={reflections} "
+        f"claimedBy={request.get('claimedBy')} claimedAt={request.get('claimedAt')}"
+    )
     
     db = mongo_client["ai-scientist"]
     hypotheses_collection = db["hypotheses"]
@@ -858,6 +881,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     if not hypothesis:
         error_msg = f"Hypothesis {hypothesis_id} not found for ideation"
         print(f"❌ {error_msg}")
+        print("[ideation-debug] Hypothesis lookup failed during ideation start")
         ideation_collection.update_one(
             {"_id": request_id},
             {
@@ -915,6 +939,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
         "Use the ideation pipeline tools, perform literature search, and return the final idea JSON.\n",
         encoding="utf-8"
     )
+    print(f"[ideation-debug] Workshop file written to {workshop_path}")
     
     cmd = [
         sys.executable or "python3",
@@ -930,6 +955,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     ]
     
     print(f"🛠️  Running ideation command: {' '.join(cmd)}")
+    print(f"[ideation-debug] Running ideation subprocess cwd={workspace_root} timeout=3600s")
     
     try:
         result = subprocess.run(
@@ -938,6 +964,10 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
             capture_output=True,
             text=True,
             timeout=3600
+        )
+        print(
+            f"[ideation-debug] Subprocess finished returncode={result.returncode} "
+            f"stdout_len={len(result.stdout or '')} stderr_len={len(result.stderr or '')}"
         )
         if result.stdout:
             print(result.stdout)
@@ -950,6 +980,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
             )
         
         output_json_path = workshop_path.with_suffix(".json")
+        print(f"[ideation-debug] Expecting ideation output at {output_json_path}")
         if not output_json_path.exists():
             raise FileNotFoundError(
                 f"Ideation output not found: {output_json_path}"
@@ -957,6 +988,10 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
         
         with open(output_json_path, "r", encoding="utf-8") as f:
             raw_output = json.load(f)
+        print(
+            f"[ideation-debug] Loaded ideation JSON type={type(raw_output).__name__} "
+            f"count={len(raw_output) if isinstance(raw_output, list) else 1}"
+        )
         
         if isinstance(raw_output, dict):
             raw_ideas = [raw_output]
@@ -968,6 +1003,10 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
         normalized_ideas = [
             _normalize_idea_payload(raw, defaults) for raw in raw_ideas
         ]
+        print(
+            f"[ideation-debug] Normalized {len(normalized_ideas)} idea(s); "
+            f"first_keys={list(normalized_ideas[0].keys()) if normalized_ideas else 'n/a'}"
+        )
         
         completed_at = datetime.utcnow()
         ideation_collection.update_one(
