@@ -49,7 +49,7 @@ function Header() {
             Validation Queue
           </Link>
           <Link
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-4 py-1.5 font-semibold text-slate-950 shadow-[0_18px_40px_-22px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300"
+            className="inline-flex items-center text-white gap-2 rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-4 py-1.5 font-semibold shadow-[0_18px_40px_-22px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300"
             href="/overview"
           >
             <Sparkles className="h-4 w-4" />
