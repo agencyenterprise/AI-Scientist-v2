@@ -11,8 +11,22 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-12 py-8">
+      <div className="rounded-2xl border border-amber-500/40 bg-amber-500/15 px-6 py-4 text-amber-100 shadow-lg shadow-amber-900/20">
+        <p className="flex items-center gap-2 text-lg font-semibold">
+          <span role="img" aria-label="Warning">
+            ⚠️
+          </span>
+          Temporarily Offline for Maintenance
+        </p>
+        <p className="mt-1 text-sm text-amber-100/90">
+          We’re fine-tuning how we schedule Runpod GPUs so resources stay productive instead of idling.
+        </p>
+      </div>
 
-      <section className="relative overflow-hidden rounded-[2.75rem] border border-slate-800/80 bg-slate-950/70 px-6 py-12 shadow-[0_50px_140px_-60px_rgba(14,165,233,0.9)] sm:px-12 sm:py-16">
+      <section
+        className="pointer-events-none relative overflow-hidden rounded-[2.75rem] border border-slate-800/80 bg-slate-950/40 px-6 py-12 opacity-60 shadow-[0_50px_140px_-60px_rgba(14,165,233,0.9)] sm:px-12 sm:py-16"
+        aria-disabled="true"
+      >
         <div className="pointer-events-none absolute -left-[20%] -top-[35%] h-[420px] w-[420px] rounded-full bg-sky-500/20 blur-3xl" />
         <div className="pointer-events-none absolute -right-[25%] top-1/3 h-[360px] w-[360px] rounded-full bg-indigo-500/20 blur-3xl" />
         <div className="relative mx-auto flex max-w-3xl flex-col gap-10 text-center">
@@ -38,7 +52,11 @@ export default async function HomePage() {
           </p>
         </div>
       </section>
-      {hypotheses.length > 0 && <HypothesisHistoryList initialHypotheses={hypotheses} />}
+      {hypotheses.length > 0 && (
+        <div className="pointer-events-none opacity-60" aria-disabled="true">
+          <HypothesisHistoryList initialHypotheses={hypotheses} />
+        </div>
+      )}
     </div>
   )
 }
