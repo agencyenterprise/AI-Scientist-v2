@@ -101,6 +101,8 @@ class GPUConfig:
 class ComputeConfig:
     gpu: GPUConfig
     notes: str
+    ram_gb: Optional[int] = None
+    vcpu: Optional[int] = None
 
 
 @dataclass
