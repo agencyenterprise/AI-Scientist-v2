@@ -38,10 +38,11 @@ experiment:
 # Hardware/Compute Resources Available
 compute:
   gpu:
-    type: "L40S"
-    count: 3
-    vram_gb: 48
-  notes: "Each experiment runs on ONE L40 GPU (48GB VRAM). The 3 GPUs per pod run 3 seeds in parallel. Design experiments for a single powerful GPU - you can use larger models (up to ~7B params), bigger batch sizes, and more extensive training than on consumer hardware. DATASETS: Use dataset sizes appropriate to the experiment at hand - datasets can be downloaded from HuggingFace. Use streaming=True for very large datasets (>10GB)."
+    type: "RTX 4090"
+    count: 2
+    vram_gb: 24
+  ram_gb: 36
+  notes: "Each experiment runs on ONE RTX 4090 GPU (24GB VRAM each). The pod has 2 GPUs total with 36GB system RAM, enabling parallel execution of 2 experiments/seeds simultaneously. Each GPU can handle moderate-sized models (~3B params for training, ~7B for inference), batch sizes of 16-64, and extensive training. Fine-tuning is fully supported - the agent can load pre-trained models from HuggingFace and fine-tune them using standard methods (full fine-tuning, LoRA, etc). DATASETS: Use dataset sizes appropriate to the experiment at hand - datasets can be downloaded from HuggingFace. Use streaming=True for very large datasets (>10GB) or if memory becomes an issue."
 
 debug:
   stage4: False
@@ -60,7 +61,7 @@ agent:
   # whether to instruct the agent to use CV (set to 1 to disable)
   k_fold_validation: 1
   multi_seed_eval:
-    num_seeds: 3 # should be the same as num_workers if num_workers < 3. Otherwise, set it to be 3.
+    num_seeds: 2 # should match GPU count for optimal parallel execution. With 2 GPUs, use 2 seeds to run them in parallel.
   # whether to instruct the agent to generate a prediction function
   expose_prediction: False
   # whether to provide the agent with a preview of the data

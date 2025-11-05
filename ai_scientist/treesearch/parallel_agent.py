@@ -295,12 +295,14 @@ class MinimalAgent:
         if hasattr(self.cfg, "compute") and hasattr(self.cfg.compute, "gpu"):
             gpu_type = self.cfg.compute.gpu.type
             vram_gb = self.cfg.compute.gpu.vram_gb
-            gpu_info = f"\n\n**Available Hardware**: You have access to ONE {gpu_type} GPU with {vram_gb}GB VRAM. This is a powerful enterprise GPU that can handle:\n" \
-                      f"  - Large models (up to ~7B parameters for inference, ~3B for training)\n" \
-                      f"  - Large batch sizes (don't be conservative - use batch sizes of 32-128+)\n" \
+            ram_gb = self.cfg.compute.ram_gb if hasattr(self.cfg.compute, "ram_gb") else "unknown"
+            gpu_info = f"\n\n**Available Hardware**: You have access to ONE {gpu_type} GPU with {vram_gb}GB VRAM and {ram_gb}GB system RAM. This GPU can handle:\n" \
+                      f"  - Moderate to large models (~3B parameters for training, ~7B for inference)\n" \
+                      f"  - Fine-tuning pre-trained models (full fine-tuning for smaller models, LoRA/QLoRA for larger ones)\n" \
+                      f"  - Good batch sizes (use batch sizes of 16-64 for training, can go higher for inference)\n" \
                       f"  - Extensive training (15-20+ epochs is fine)\n" \
-                      f"  - Multiple datasets with thousands of samples\n" \
-                      f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or even larger models if appropriate for your task, but prefer gpt-2-like models to not take so long to run."
+                      f"  - Multiple datasets with thousands to millions of samples\n" \
+                      f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or similar-sized models. For fine-tuning, you can use models from HuggingFace with PEFT/LoRA for larger models to fit in memory. Be mindful of RAM limitations when loading large datasets - use streaming=True for datasets >10GB."
 
         env_prompt = {
             "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow.{gpu_info}"
