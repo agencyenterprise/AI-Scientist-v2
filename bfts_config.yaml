@@ -41,8 +41,9 @@ compute:
     type: "RTX 4090"
     count: 2
     vram_gb: 24
-  ram_gb: 36
-  notes: "Each experiment runs on ONE RTX 4090 GPU (24GB VRAM each). The pod has 2 GPUs total with 36GB system RAM, enabling parallel execution of 2 experiments/seeds simultaneously. Each GPU can handle moderate-sized models (~3B params for training, ~7B for inference), batch sizes of 16-64, and extensive training. Fine-tuning is fully supported - the agent can load pre-trained models from HuggingFace and fine-tune them using standard methods (full fine-tuning, LoRA, etc). DATASETS: Use dataset sizes appropriate to the experiment at hand - datasets can be downloaded from HuggingFace. Use streaming=True for very large datasets (>10GB) or if memory becomes an issue."
+  ram_gb: 124
+  vcpu: 32
+  notes: "Each experiment runs on ONE RTX 4090 GPU (24GB VRAM each). The pod has 2 GPUs total, 124GB system RAM, and 32 vCPUs, enabling parallel execution of 2 experiments/seeds simultaneously. Each GPU can handle moderate-sized models (~3B params for training, ~7B for inference), batch sizes of 16-64, and extensive training. With 124GB RAM, you can load large datasets directly into memory without streaming in most cases. Fine-tuning is fully supported - the agent can load pre-trained models from HuggingFace and fine-tune them using standard methods (full fine-tuning, LoRA, etc). DATASETS: Use dataset sizes appropriate to the experiment - with 124GB RAM, you can handle very large datasets. Only use streaming=True for massive datasets (>50GB) that exceed RAM capacity."
 
 debug:
   stage4: False
