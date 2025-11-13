@@ -11,9 +11,25 @@ def bool_label(value: bool) -> str:
     return "yes" if value else "no"
 
 
-def shorten_text(text: Optional[str], limit: int) -> str:
+def shorten_text(text: Optional[str | list], limit: int) -> str:
     if not text:
         return ""
+    
+    # Handle list input (convert to string)
+    if isinstance(text, list):
+        # If list contains dicts, extract string values
+        items = []
+        for item in text:
+            if isinstance(item, dict):
+                # Join dict values that are strings
+                items.append(" ".join(str(v) for v in item.values() if v))
+            else:
+                items.append(str(item))
+        text = " ".join(items)
+    
+    # Ensure text is a string
+    text = str(text)
+    
     squashed = " ".join(text.split())
     if len(squashed) <= limit:
         return squashed

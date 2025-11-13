@@ -105,7 +105,8 @@ export const RunZ = z.object({
   errorMessage: z.string().nullable().optional(),
   errorTraceback: z.string().nullable().optional(),
   retryCount: z.number().int().optional(),
-  hidden: z.boolean().optional()
+  hidden: z.boolean().optional(),
+  chatgptUrl: z.string().optional()
 })
 
 export type Run = z.infer<typeof RunZ>

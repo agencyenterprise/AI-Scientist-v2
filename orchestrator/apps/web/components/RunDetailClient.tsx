@@ -181,6 +181,24 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
           <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
             <h2 className="text-sm font-semibold text-slate-200">Metadata</h2>
             <dl className="mt-4 grid gap-3 text-sm text-slate-300">
+              {detail.run.chatgptUrl && (
+                <div className="flex flex-col gap-1 border-b border-slate-800 pb-3">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">ChatGPT Origin</dt>
+                  <dd>
+                    <a 
+                      href={detail.run.chatgptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 hover:underline"
+                    >
+                      View conversation
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt>Created</dt>
                 <dd>{new Date(detail.run.createdAt).toLocaleString()}</dd>

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { createLogger } from "../logging/logger"
 import { createRun, findRunById, updateRun } from "../repos/runs.repo"
+import { findHypothesisById } from "../repos/hypotheses.repo"
 import { assertTransition } from "../state/runStateMachine"
 import { type Run } from "../schemas/run"
 import { getOrchestratorQueue } from "../queues/bullmq"
@@ -8,12 +9,16 @@ import { getOrchestratorQueue } from "../queues/bullmq"
 const log = createLogger({ module: "runs.service" })
 
 export async function enqueueRun(hypothesisId: string): Promise<Run> {
+  // Fetch hypothesis to get chatgptUrl if it exists
+  const hypothesis = await findHypothesisById(hypothesisId)
+  
   const run: Run = {
     _id: randomUUID(),
     hypothesisId,
     status: "QUEUED",
     createdAt: new Date(),
-    updatedAt: new Date()
+    updatedAt: new Date(),
+    ...(hypothesis?.chatGptUrl && { chatgptUrl: hypothesis.chatGptUrl })
   }
   await createRun(run)
   try {
