@@ -957,33 +957,33 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     
     print(f"🛠️  Running ideation command: {' '.join(cmd)}")
     print(f"[ideation-debug] Running ideation subprocess cwd={workspace_root} timeout=3600s")
+    print("[ideation-debug] === STREAMING OUTPUT (real-time) ===\n")
     
     try:
-        # Use line buffering to see output in real-time
-        result = subprocess.run(
+        # Use Popen to stream output in real-time
+        process = subprocess.Popen(
             cmd,
             cwd=str(workspace_root),
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Merge stderr into stdout
             text=True,
-            timeout=3600,
-            bufsize=1
+            bufsize=1,  # Line buffered
+            universal_newlines=True
         )
-        print(f"[ideation-debug] Subprocess finished returncode={result.returncode}")
         
-        # Print output in real-time as we get it
-        if result.stdout:
-            print("[ideation-debug] === IDEATION STDOUT ===")
-            print(result.stdout)
-            print("[ideation-debug] === END STDOUT ===")
-        if result.stderr:
-            print("[ideation-debug] === IDEATION STDERR ===")
-            print(result.stderr, file=sys.stderr)
-            print("[ideation-debug] === END STDERR ===", file=sys.stderr)
+        # Stream output line by line in real-time
+        for line in process.stdout:
+            print(line, end='', flush=True)
         
-        if result.returncode != 0:
+        # Wait for process to complete
+        returncode = process.wait(timeout=3600)
+        
+        print(f"\n[ideation-debug] === END OUTPUT ===")
+        print(f"[ideation-debug] Subprocess finished returncode={returncode}")
+        
+        if returncode != 0:
             raise RuntimeError(
-                f"Ideation script exited with code {result.returncode}"
+                f"Ideation script exited with code {returncode}"
             )
         
         output_json_path = workshop_path.with_suffix(".json")
