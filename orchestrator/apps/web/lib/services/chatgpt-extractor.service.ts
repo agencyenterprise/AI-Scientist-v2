@@ -5,24 +5,34 @@ export type Message = { role: string; text: string };
 
 export class ChatGPTSharedExtractor {
   async extractPlainText(sharedUrl: string): Promise<string> {
+    console.error(`[DEBUG] Starting extraction for URL: ${sharedUrl}`);
     const html = await this.fetchHtml(sharedUrl);
+    console.error(`[DEBUG] Fetched HTML, length: ${html.length} characters`);
 
     // Try streamed React Router data (new format)
+    console.error(`[DEBUG] Attempting extraction method 1: extractFromStreamedData`);
     let messages = this.extractFromStreamedData(html);
+    console.error(`[DEBUG] extractFromStreamedData result: ${messages ? messages.length : 0} messages`);
 
     // Try JSON payload (older format)
     if (!messages || messages.length === 0) {
+      console.error(`[DEBUG] Attempting extraction method 2: extractFromNextData`);
       messages = this.extractFromNextData(html);
+      console.error(`[DEBUG] extractFromNextData result: ${messages ? messages.length : 0} messages`);
     }
 
     // Fallback: rendered HTML
     if (!messages || messages.length === 0) {
+      console.error(`[DEBUG] Attempting extraction method 3: extractFromHTMLRendered`);
       messages = this.extractFromHTMLRendered(html);
+      console.error(`[DEBUG] extractFromHTMLRendered result: ${messages ? messages.length : 0} messages`);
     }
 
     if (!messages || messages.length === 0) {
+      console.error(`[DEBUG] ERROR: All extraction methods failed. HTML preview (first 500 chars): ${html.substring(0, 500)}`);
       throw new Error("No readable messages found. The page structure may have changed or the chat is restricted.");
     }
+    console.error(`[DEBUG] Successfully extracted ${messages.length} messages`);
     return this.toPlainTranscript(messages);
   }
 
@@ -33,21 +43,37 @@ export class ChatGPTSharedExtractor {
     // Find the large script tag containing .enqueue() call
     const $ = cheerio.load(html);
     let mainData = "";
+    let scriptCount = 0;
+    let enqueueScriptCount = 0;
     
     $("script").each((i, el) => {
+      scriptCount++;
       const content = $(el).html() || "";
       // Look for the script that contains .enqueue with a large data payload
-      if (content.includes('.enqueue(') && content.length > 100000) {
-        mainData = content;
+      if (content.includes('.enqueue(')) {
+        enqueueScriptCount++;
+        console.error(`[DEBUG] Found script with .enqueue(), length: ${content.length}`);
+        if (content.length > 100000) {
+          mainData = content;
+          console.error(`[DEBUG] Selected script with .enqueue() as mainData, length: ${content.length}`);
+        }
       }
     });
     
-    if (!mainData) return null;
+    console.error(`[DEBUG] Total script tags: ${scriptCount}, scripts with .enqueue(): ${enqueueScriptCount}`);
+    if (!mainData) {
+      console.error(`[DEBUG] No suitable script with .enqueue() found (need length > 100000)`);
+      return null;
+    }
     
     // Extract the enqueue call with the large JSON payload
     // Find .enqueue(" and extract until the closing ");
     const enqueueStart = mainData.indexOf('.enqueue("');
-    if (enqueueStart === -1) return null;
+    console.error(`[DEBUG] Looking for .enqueue(" pattern, found at index: ${enqueueStart}`);
+    if (enqueueStart === -1) {
+      console.error(`[DEBUG] Pattern .enqueue(" not found in mainData`);
+      return null;
+    }
     
     const dataStart = enqueueStart + '.enqueue("'.length;
     let i = dataStart;
@@ -84,9 +110,14 @@ export class ChatGPTSharedExtractor {
     
     // Find the JSON array start
     const jsonStart = jsonStr.indexOf('[');
-    if (jsonStart === -1) return null;
+    console.error(`[DEBUG] Extracted jsonStr length: ${jsonStr.length}, looking for '[' at index: ${jsonStart}`);
+    if (jsonStart === -1) {
+      console.error(`[DEBUG] No '[' found in jsonStr, preview: ${jsonStr.substring(0, 200)}`);
+      return null;
+    }
     
     let jsonOnly = jsonStr.substring(jsonStart).trim();
+    console.error(`[DEBUG] jsonOnly length after substring: ${jsonOnly.length}`);
     
     // Remove trailing \n (escaped newline chars)
     if (jsonOnly.endsWith('\\n')) {
@@ -95,10 +126,15 @@ export class ChatGPTSharedExtractor {
     
     try {
       const data = JSON.parse(jsonOnly);
-      if (!Array.isArray(data)) return null;
+      console.error(`[DEBUG] Successfully parsed JSON, isArray: ${Array.isArray(data)}, type: ${typeof data}`);
+      if (!Array.isArray(data)) {
+        console.error(`[DEBUG] Parsed data is not an array`);
+        return null;
+      }
       
       // Extract substantial conversation strings
       const conversationStrings = this.extractConversationStrings(data);
+      console.error(`[DEBUG] Extracted ${conversationStrings.length} conversation strings`);
       
       // Convert strings to messages
       const messages: Message[] = [];
@@ -108,20 +144,25 @@ export class ChatGPTSharedExtractor {
         messages.push({ role, text: this.cleanText(text) });
       }
       
+      console.error(`[DEBUG] Created ${messages.length} messages from conversation strings`);
       return messages.length > 0 ? messages : null;
     } catch (e) {
-      console.error("Failed to parse streamed data:", e);
+      console.error(`[DEBUG] Failed to parse streamed data: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(`[DEBUG] jsonOnly preview (first 500 chars): ${jsonOnly.substring(0, 500)}`);
       return null;
     }
   }
   
   private extractConversationStrings(data: any): string[] {
     const allStrings: string[] = [];
+    let totalStrings = 0;
+    let filteredStrings = 0;
     
     const extractStrings = (obj: any, depth = 0): void => {
       if (depth > 15) return;
       
       if (typeof obj === 'string') {
+        totalStrings++;
         // Filter for actual conversation content:
         // - At least 50 characters (substantial content)
         // - Contains spaces (actual sentences)
@@ -137,6 +178,7 @@ export class ChatGPTSharedExtractor {
             !obj.includes('const ') &&
             !obj.match(/^[A-Za-z0-9_-]{20,}$/)) {
           allStrings.push(obj);
+          filteredStrings++;
         }
       } else if (Array.isArray(obj)) {
         obj.forEach(item => extractStrings(item, depth + 1));
@@ -146,10 +188,13 @@ export class ChatGPTSharedExtractor {
     };
     
     extractStrings(data);
+    console.error(`[DEBUG] extractConversationStrings: found ${totalStrings} total strings, ${filteredStrings} passed filters`);
     return allStrings;
   }
 
   private async fetchHtml(u: string): Promise<string> {
+    console.error(`[DEBUG] Fetching HTML from: ${u}`);
+    const startTime = Date.now();
     const res = await fetch(u, {
       headers: {
         "user-agent":
@@ -159,42 +204,64 @@ export class ChatGPTSharedExtractor {
       // Shared chats are public; no cookies needed
       redirect: "follow",
     });
+    const fetchTime = Date.now() - startTime;
+    console.error(`[DEBUG] Fetch completed in ${fetchTime}ms, status: ${res.status} ${res.statusText}`);
     if (!res.ok) {
+      console.error(`[DEBUG] HTTP error: ${res.status} ${res.statusText}`);
       throw new Error(`HTTP ${res.status} fetching page`);
     }
-    return await res.text();
+    const html = await res.text();
+    console.error(`[DEBUG] HTML received, length: ${html.length} characters`);
+    return html;
   }
 
   private extractFromNextData(html: string): Message[] | null {
+    console.error(`[DEBUG] extractFromNextData: Looking for __NEXT_DATA__`);
     const $ = cheerio.load(html);
 
     let jsonText = $("#__NEXT_DATA__").html();
     if (!jsonText) {
+      console.error(`[DEBUG] __NEXT_DATA__ not found, searching scripts for props/pageProps`);
       $("script").each((_, el) => {
         const t = $(el).html() || "";
         if (!jsonText && t.includes('"props"') && t.includes('"pageProps"')) {
           jsonText = t;
+          console.error(`[DEBUG] Found script with props/pageProps, length: ${t.length}`);
         }
       });
+    } else {
+      console.error(`[DEBUG] Found __NEXT_DATA__, length: ${jsonText.length}`);
     }
-    if (!jsonText) return null;
+    if (!jsonText) {
+      console.error(`[DEBUG] No __NEXT_DATA__ or props/pageProps script found`);
+      return null;
+    }
 
     let root: any;
     try {
       root = JSON.parse(jsonText);
-    } catch {
+      console.error(`[DEBUG] Successfully parsed __NEXT_DATA__ JSON`);
+    } catch (e1) {
+      console.error(`[DEBUG] First JSON parse failed: ${e1 instanceof Error ? e1.message : String(e1)}`);
       try {
         root = JSON.parse(jsonText.replace(/&quot;/g, '"').replace(/&#34;/g, '"'));
-      } catch {
+        console.error(`[DEBUG] Successfully parsed after HTML entity replacement`);
+      } catch (e2) {
+        console.error(`[DEBUG] Second JSON parse also failed: ${e2 instanceof Error ? e2.message : String(e2)}`);
         return null;
       }
     }
     const msgs = this.collectMessagesFromJSON(root);
+    console.error(`[DEBUG] collectMessagesFromJSON found ${msgs.length} messages`);
     const uniq = this.dedupeMessages(msgs);
-    return uniq.filter((m) => ["user", "assistant", "system", "tool"].includes(m.role) || m.role === "unknown");
+    console.error(`[DEBUG] After deduplication: ${uniq.length} messages`);
+    const filtered = uniq.filter((m) => ["user", "assistant", "system", "tool"].includes(m.role) || m.role === "unknown");
+    console.error(`[DEBUG] After filtering: ${filtered.length} messages`);
+    return filtered;
   }
 
   private extractFromHTMLRendered(html: string): Message[] {
+    console.error(`[DEBUG] extractFromHTMLRendered: Parsing HTML for rendered content`);
     const $ = cheerio.load(html);
     const chunks: Message[] = [];
 
@@ -202,6 +269,7 @@ export class ChatGPTSharedExtractor {
     const candidates = $('[data-message-author-role], article, main, div')
       .toArray()
       .map((el) => $(el));
+    console.error(`[DEBUG] Found ${candidates.length} candidate elements`);
 
     for (const el of candidates) {
       const roleAttr = el.attr("data-message-author-role");
@@ -228,7 +296,10 @@ export class ChatGPTSharedExtractor {
       }
     }
 
-    return this.dedupeMessages(chunks);
+    console.error(`[DEBUG] extractFromHTMLRendered: Found ${chunks.length} chunks before deduplication`);
+    const deduped = this.dedupeMessages(chunks);
+    console.error(`[DEBUG] extractFromHTMLRendered: ${deduped.length} chunks after deduplication`);
+    return deduped;
   }
 
   // ---- JSON walking & formatting ----

@@ -12,6 +12,7 @@ export const HypothesisZ = z.object({
   ideaJson: z.record(z.any()).optional(),
   chatGptUrl: z.string().optional(),
   extractionStatus: z.enum(["pending", "extracting", "completed", "failed"]).optional(),
+  extractedRawText: z.string().optional(),
   ideation: z
     .object({
       requestId: z.string().uuid(),

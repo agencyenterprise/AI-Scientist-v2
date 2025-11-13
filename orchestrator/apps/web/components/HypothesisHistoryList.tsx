@@ -26,6 +26,7 @@ type HistoryHypothesis = {
   ideaJson?: Record<string, unknown>
   ideation?: IdeationInfo
   extractionStatus?: "pending" | "extracting" | "completed" | "failed"
+  extractedRawText?: string
 }
 
 type HypothesisHistoryListProps = {
@@ -35,6 +36,8 @@ type HypothesisHistoryListProps = {
 export function HypothesisHistoryList({ initialHypotheses }: HypothesisHistoryListProps) {
   const [items, setItems] = useState(() => initialHypotheses.slice(0, 10))
   const [hiding, setHiding] = useState<string | null>(null)
+  const [showExtractionModal, setShowExtractionModal] = useState(false)
+  const [extractionText, setExtractionText] = useState("")
 
   const visibleItems = items
 
@@ -157,6 +160,19 @@ export function HypothesisHistoryList({ initialHypotheses }: HypothesisHistoryLi
                           : "Launch experiment"
                     }
                   />
+                  {hypothesis.extractedRawText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExtractionText(hypothesis.extractedRawText || "")
+                        setShowExtractionModal(true)
+                      }}
+                      className="text-xs px-2 py-1 rounded border border-slate-600 bg-slate-900/40 text-slate-400 transition hover:border-sky-500/60 hover:text-sky-200"
+                      title="View the extracted ChatGPT conversation text"
+                    >
+                      📄 View Extraction
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleHide(hypothesis._id)}
@@ -180,6 +196,28 @@ export function HypothesisHistoryList({ initialHypotheses }: HypothesisHistoryLi
       <p className="mt-6 text-[11px] uppercase tracking-[0.3em] text-slate-500">
         Hidden hypotheses can still be found in your database but will no longer appear in quick-start lists.
       </p>
+
+      {/* Extraction Text Viewer Modal */}
+      {showExtractionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 p-6 max-h-[90vh] overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">
+                📄 Extracted ChatGPT Conversation
+              </h3>
+              <button
+                onClick={() => setShowExtractionModal(false)}
+                className="text-slate-400 hover:text-slate-200 transition"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-sm text-slate-300 font-mono whitespace-pre-wrap break-words bg-slate-900/50 rounded-lg p-4 max-h-[70vh] overflow-auto">
+              {extractionText || "No extraction data available"}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

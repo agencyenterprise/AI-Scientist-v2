@@ -17,6 +17,7 @@ export const IdeationRequestZ = z.object({
   hypothesisId: z.string().uuid(),
   status: IdeationStatusZ,
   reflections: z.number().int().min(1).max(10),
+  maxNumGenerations: z.number().int().min(1).max(20).optional().default(1),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   startedAt: z.coerce.date().optional(),

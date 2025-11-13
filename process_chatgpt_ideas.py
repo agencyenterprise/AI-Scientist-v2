@@ -63,6 +63,8 @@ class ChatGPTExtractor:
         """
         import subprocess
         
+        console.print(f"[yellow][DEBUG] Starting extraction for URL: {url}[/yellow]")
+        
         # We'll use tsx to run the TypeScript directly
         # First try tsx, then fall back to a simple fetch approach
         try:
@@ -72,21 +74,35 @@ const cheerio = require('cheerio');
 
 class ChatGPTSharedExtractor {{
   async extractPlainText(sharedUrl) {{
+    console.error(`[DEBUG] Starting extraction for URL: ${{sharedUrl}}`);
     const html = await this.fetchHtml(sharedUrl);
+    console.error(`[DEBUG] Fetched HTML, length: ${{html.length}} characters`);
+    
+    console.error(`[DEBUG] Attempting extraction method 1: extractFromStreamedData`);
     let messages = this.extractFromStreamedData(html);
+    console.error(`[DEBUG] extractFromStreamedData result: ${{messages ? messages.length : 0}} messages`);
+    
     if (!messages || messages.length === 0) {{
+      console.error(`[DEBUG] Attempting extraction method 2: extractFromNextData`);
       messages = this.extractFromNextData(html);
+      console.error(`[DEBUG] extractFromNextData result: ${{messages ? messages.length : 0}} messages`);
     }}
     if (!messages || messages.length === 0) {{
+      console.error(`[DEBUG] Attempting extraction method 3: extractFromHTMLRendered`);
       messages = this.extractFromHTMLRendered(html);
+      console.error(`[DEBUG] extractFromHTMLRendered result: ${{messages ? messages.length : 0}} messages`);
     }}
     if (!messages || messages.length === 0) {{
+      console.error(`[DEBUG] ERROR: All extraction methods failed. HTML preview (first 500 chars): ${{html.substring(0, 500)}}`);
       throw new Error("No readable messages found");
     }}
+    console.error(`[DEBUG] Successfully extracted ${{messages.length}} messages`);
     return this.toPlainTranscript(messages);
   }}
 
   async fetchHtml(u) {{
+    console.error(`[DEBUG] Fetching HTML from: ${{u}}`);
+    const startTime = Date.now();
     const res = await fetch(u, {{
       headers: {{
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
@@ -94,8 +110,15 @@ class ChatGPTSharedExtractor {{
       }},
       redirect: "follow",
     }});
-    if (!res.ok) throw new Error(`HTTP ${{res.status}} fetching page`);
-    return await res.text();
+    const fetchTime = Date.now() - startTime;
+    console.error(`[DEBUG] Fetch completed in ${{fetchTime}}ms, status: ${{res.status}} ${{res.statusText}}`);
+    if (!res.ok) {{
+      console.error(`[DEBUG] HTTP error: ${{res.status}} ${{res.statusText}}`);
+      throw new Error(`HTTP ${{res.status}} fetching page`);
+    }}
+    const html = await res.text();
+    console.error(`[DEBUG] HTML received, length: ${{html.length}} characters`);
+    return html;
   }}
 
   extractFromStreamedData(html) {{
@@ -196,10 +219,14 @@ class ChatGPTSharedExtractor {{
 
 (async () => {{
   try {{
+    console.error('[DEBUG] Node.js script starting extraction');
     const extractor = new ChatGPTSharedExtractor();
     const text = await extractor.extractPlainText("{url}");
+    console.error(`[DEBUG] Extraction completed, output length: ${{text.length}}`);
     console.log(text);
   }} catch (error) {{
+    console.error(`[DEBUG] Error in Node.js script: ${{error.message}}`);
+    console.error(`[DEBUG] Error stack: ${{error.stack}}`);
     console.error(`Error: ${{error.message}}`);
     process.exit(1);
   }}
@@ -207,6 +234,8 @@ class ChatGPTSharedExtractor {{
 """
             
             # Run the inline script with node
+            console.print(f"[yellow][DEBUG] Running Node.js extraction script...[/yellow]")
+            start_time = datetime.now()
             result = subprocess.run(
                 ["node", "-e", inline_script],
                 capture_output=True,
@@ -214,17 +243,39 @@ class ChatGPTSharedExtractor {{
                 timeout=60,
                 cwd=str(Path(__file__).parent / "orchestrator" / "apps" / "web")
             )
+            elapsed = (datetime.now() - start_time).total_seconds()
+            console.print(f"[yellow][DEBUG] Node.js script completed in {elapsed:.2f}s, return code: {result.returncode}[/yellow]")
+            
+            if result.stderr:
+                console.print(f"[yellow][DEBUG] Node.js stderr output:[/yellow]")
+                for line in result.stderr.strip().split('\n'):
+                    console.print(f"[yellow]  {line}[/yellow]")
             
             if result.returncode != 0:
+                console.print(f"[red][DEBUG] Extraction failed with return code {result.returncode}[/red]")
+                console.print(f"[red][DEBUG] stdout: {result.stdout[:500]}[/red]")
+                console.print(f"[red][DEBUG] stderr: {result.stderr[:500]}[/red]")
                 raise ValueError(f"Extraction failed: {result.stderr}")
             
-            return result.stdout.strip()
+            output_text = result.stdout.strip()
+            console.print(f"[green][DEBUG] Extraction successful, output length: {len(output_text)} characters[/green]")
+            if len(output_text) < 100:
+                console.print(f"[yellow][DEBUG] WARNING: Output seems very short, preview: {output_text[:200]}[/yellow]")
+            
+            return output_text
             
         except FileNotFoundError:
+            console.print("[red][DEBUG] Node.js not found in PATH[/red]")
             raise ValueError("Node.js not found. Please install Node.js to use ChatGPT extraction.")
         except subprocess.TimeoutExpired:
+            console.print("[red][DEBUG] Extraction timed out after 60 seconds[/red]")
             raise ValueError("ChatGPT extraction timed out after 60 seconds")
         except Exception as e:
+            console.print(f"[red][DEBUG] Exception during extraction: {type(e).__name__}: {e}[/red]")
+            import traceback
+            console.print(f"[red][DEBUG] Traceback:[/red]")
+            for line in traceback.format_exc().split('\n'):
+                console.print(f"[red]  {line}[/red]")
             raise ValueError(f"Failed to extract ChatGPT conversation: {e}")
 
 

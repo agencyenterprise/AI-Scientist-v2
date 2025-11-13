@@ -216,7 +216,9 @@ class Interpreter:
             self._drain_queues()
             self.process.join(timeout=2)
         # don't wait for gc, clean up immediately
-        self.process.close()
+        # Only close if process has actually exited
+        if self.process.exitcode is not None:
+            self.process.close()
         self.process = None  # type: ignore
 
     def run(self, code: str, reset_session=True) -> ExecutionResult:

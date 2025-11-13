@@ -941,6 +941,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     )
     print(f"[ideation-debug] Workshop file written to {workshop_path}")
     
+    max_generations = ideation_request.get("maxNumGenerations", 1)
     cmd = [
         sys.executable or "python3",
         "ai_scientist/perform_ideation_temp_free.py",
@@ -951,28 +952,34 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
         "--num-reflections",
         str(reflections),
         "--max-num-generations",
-        "1"
+        str(max_generations)
     ]
     
     print(f"🛠️  Running ideation command: {' '.join(cmd)}")
     print(f"[ideation-debug] Running ideation subprocess cwd={workspace_root} timeout=3600s")
     
     try:
+        # Use line buffering to see output in real-time
         result = subprocess.run(
             cmd,
             cwd=str(workspace_root),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=3600
+            timeout=3600,
+            bufsize=1
         )
-        print(
-            f"[ideation-debug] Subprocess finished returncode={result.returncode} "
-            f"stdout_len={len(result.stdout or '')} stderr_len={len(result.stderr or '')}"
-        )
+        print(f"[ideation-debug] Subprocess finished returncode={result.returncode}")
+        
+        # Print output in real-time as we get it
         if result.stdout:
+            print("[ideation-debug] === IDEATION STDOUT ===")
             print(result.stdout)
+            print("[ideation-debug] === END STDOUT ===")
         if result.stderr:
+            print("[ideation-debug] === IDEATION STDERR ===")
             print(result.stderr, file=sys.stderr)
+            print("[ideation-debug] === END STDERR ===", file=sys.stderr)
         
         if result.returncode != 0:
             raise RuntimeError(

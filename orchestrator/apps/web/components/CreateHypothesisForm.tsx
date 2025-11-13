@@ -14,14 +14,21 @@ export function CreateHypothesisForm() {
   const [chatGptUrl, setChatGptUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [extractionSuccess, setExtractionSuccess] = useState(false)
+  const [extractionMessage, setExtractionMessage] = useState("")
   const [enableIdeation, setEnableIdeation] = useState(false)
-  const [reflections, setReflections] = useState(3)
+  const [reflections, setReflections] = useState(2)
+  const [maxNumGenerations, setMaxNumGenerations] = useState(1)
   const [ideationQueueSize, setIdeationQueueSize] = useState(0)
   
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [modalTitle, setModalTitle] = useState("")
   const [modalDescription, setModalDescription] = useState("")
+  
+  // Extraction view state
+  const [showExtractionText, setShowExtractionText] = useState(false)
+  const [extractedTextContent, setExtractedTextContent] = useState("")
 
   const refreshIdeationQueue = useCallback(async () => {
     try {
@@ -45,21 +52,35 @@ export function CreateHypothesisForm() {
   }, [refreshIdeationQueue])
 
   const handleSuccessNavigation = (payload: any) => {
-    const redirectUrl = payload?.ideation?.redirectUrl
+    // Show success message briefly on the current page
+    setExtractionSuccess(true)
+    
+    const hasIdeation = !!payload?.ideation?.requestId
+    const successMsg = hasIdeation 
+      ? "✅ Hypothesis created & ideation queued!"
+      : "✅ Hypothesis created! Run will start shortly."
+    
+    setExtractionMessage(successMsg)
+    console.log(`[CreateHypothesisForm] Success: ideation=${hasIdeation}, message=${successMsg}`)
+    
+    // Clear form for next input
     setTitle("")
     setIdea("")
     setChatGptUrl("")
+    setError(null)
     setEnableIdeation(false)
-    setReflections(3)
-    if (payload?.ideation?.requestId) {
+    setReflections(2)
+    setMaxNumGenerations(1)
+    
+    if (hasIdeation) {
       refreshIdeationQueue()
     }
-    if (redirectUrl) {
-      router.push(redirectUrl)
-    } else {
-      router.push("/")
-    }
-    router.refresh()
+    
+    // Hide success message after 3 seconds (stay on page)
+    setTimeout(() => {
+      setExtractionSuccess(false)
+      setExtractionMessage("")
+    }, 3000)
   }
 
   const validateChatGptUrl = (url: string): string | null => {
@@ -76,17 +97,25 @@ export function CreateHypothesisForm() {
     return null
   }
 
-  const handleChatGptUrlChange = async (url: string) => {
+  const handleChatGptUrlChange = (url: string) => {
     setChatGptUrl(url)
     setError(null)
 
     const validationError = validateChatGptUrl(url)
     if (validationError) {
       setError(validationError)
+    }
+  }
+
+  const handleExtractAndIdeate = async () => {
+    if (!chatGptUrl.trim()) {
+      setError("Please paste a ChatGPT URL first")
       return
     }
 
-    if (!url.trim()) {
+    const validationError = validateChatGptUrl(chatGptUrl)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -94,13 +123,15 @@ export function CreateHypothesisForm() {
     setExtracting(true)
     try {
       const ideationSelected = enableIdeation && !IDEATION_LOCKED
+      console.log(`[CreateHypothesisForm] Extracting ChatGPT URL, enableIdeation=${ideationSelected}, reflections=${reflections}, maxNumGenerations=${maxNumGenerations}`)
       const response = await fetch("/api/hypotheses/extract-and-create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          url,
+          url: chatGptUrl,
           enableIdeation: enableIdeation && !IDEATION_LOCKED,
-          reflections
+          reflections,
+          maxNumGenerations: enableIdeation ? maxNumGenerations : 1
         })
       })
 
@@ -111,8 +142,7 @@ export function CreateHypothesisForm() {
         return
       }
 
-      // Clear form and redirect immediately
-      // Extraction continues in background
+      // Show success and continue
       handleSuccessNavigation(data)
     } catch (err) {
       setError("Network error while creating hypothesis")
@@ -287,17 +317,33 @@ export function CreateHypothesisForm() {
 
         <div className="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-5">
           <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                Ideation assist
-              </p>
-              <p className="text-sm text-slate-300">
-                Once the hypothesis is created (either manually or from ChatGPT), we can queue a dedicated worker to brainstorm research variants before we run experiments.
-              </p>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Ideation assist
+                </p>
+                <p className="text-sm text-slate-300">
+                  Once the hypothesis is created (either manually or from ChatGPT), we can queue a dedicated worker to brainstorm research variants before we run experiments.
+                </p>
+              </div>
+              
+              <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 p-3">
+                <p className="text-xs text-slate-400 mb-2">
+                  <strong>Two paths:</strong>
+                </p>
+                <ul className="text-xs text-slate-400 space-y-1 ml-2">
+                  <li>✅ <strong>Ideation enabled:</strong> Brainstorm variants first, then run experiments</li>
+                  <li>⭕ <strong>Ideation disabled:</strong> Skip to experiments directly</li>
+                </ul>
+              </div>
+              
               <p className="text-xs text-slate-500">
                 {ideationQueueSize === 0
                   ? "Ideation queue is empty."
                   : `${ideationQueueSize} ideation ${ideationQueueSize === 1 ? "request" : "requests"} waiting.`}
+              </p>
+              <p className={`text-xs font-semibold ${enableIdeation ? "text-sky-400" : "text-slate-500"}`}>
+                Status: {enableIdeation ? "✅ ENABLED (variants first)" : "⭕ DISABLED (experiments only)"}
               </p>
             </div>
 
@@ -306,7 +352,9 @@ export function CreateHypothesisForm() {
                 className={`inline-flex w-fit items-center gap-3 rounded-full border border-slate-800/60 px-4 py-2 text-sm font-medium shadow-[0_12px_36px_-30px_rgba(14,165,233,0.2)] ${
                   IDEATION_LOCKED
                     ? "cursor-not-allowed bg-slate-800/40 text-slate-500"
-                    : "cursor-pointer bg-slate-900/60 text-slate-200"
+                    : enableIdeation
+                      ? "cursor-pointer bg-sky-900/40 text-sky-200 border-sky-600/40"
+                      : "cursor-pointer bg-slate-900/60 text-slate-200"
                 }`}
                 title={IDEATION_LOCKED ? "Ideation is temporarily locked" : undefined}
               >
@@ -319,6 +367,7 @@ export function CreateHypothesisForm() {
                   onChange={(event) => {
                     if (IDEATION_LOCKED) return
                     setEnableIdeation(event.target.checked)
+                    console.log(`[CreateHypothesisForm] Ideation checkbox changed to: ${event.target.checked}`)
                   }}
                   disabled={extracting || pending || IDEATION_LOCKED}
                 />
@@ -349,22 +398,94 @@ export function CreateHypothesisForm() {
                   <span>1</span>
                   <span>10</span>
                 </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  How many refinement rounds to improve each idea. More rounds = better quality but slower.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-500">
+                  <span>Max Ideas to Generate</span>
+                  <span className="font-semibold text-slate-400">{maxNumGenerations}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  value={maxNumGenerations}
+                  onChange={(event) => setMaxNumGenerations(Number.parseInt(event.target.value, 10))}
+                  disabled={IDEATION_LOCKED || !enableIdeation || extracting || pending}
+                  className="h-1 w-full appearance-none rounded-full bg-slate-800 accent-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <div className="flex justify-between text-[10px] uppercase tracking-[0.3em] text-slate-500">
+                  <span>1</span>
+                  <span>20</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  Number of different research ideas to generate. Pick the best one to run experiments on.
+                </p>
               </div>
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40"
-            disabled={pending || extracting}
-          >
-              {enableIdeation ? "Run ideation" : "Launch hypothesis"}
-          </button>
-          {error && <span className="text-sm text-rose-400">{error}</span>}
+          {extractionSuccess ? (
+            <div className="flex items-center gap-2 text-sm text-emerald-400 font-semibold">
+              <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+              </svg>
+              {extractionMessage}
+            </div>
+          ) : (
+            <>
+              {chatGptUrl.trim() ? (
+                // ChatGPT extraction mode
+                <button
+                  type="button"
+                  onClick={handleExtractAndIdeate}
+                  disabled={extracting}
+                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40"
+                >
+                  {extracting ? "Extracting..." : enableIdeation ? "Run Ideation" : "Extract Hypothesis"}
+                </button>
+              ) : (
+                // Manual hypothesis mode
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(56,189,248,0.65)] transition hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40"
+                  disabled={pending || extracting}
+                >
+                  Launch Hypothesis
+                </button>
+              )}
+              {error && <span className="text-sm text-rose-400">{error}</span>}
+            </>
+          )}
         </div>
       </form>
+
+      {/* Extraction Text Viewer Modal */}
+      {showExtractionText && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-950 p-6 max-h-[90vh] overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">
+                📄 Extracted ChatGPT Conversation
+              </h3>
+              <button
+                onClick={() => setShowExtractionText(false)}
+                className="text-slate-400 hover:text-slate-200 transition"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-sm text-slate-300 font-mono whitespace-pre-wrap break-words bg-slate-900/50 rounded-lg p-4 max-h-[70vh] overflow-auto">
+              {extractedTextContent || "No extraction data available"}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

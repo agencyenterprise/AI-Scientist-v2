@@ -22,7 +22,8 @@ const ExtractAndCreateSchema = z
         }
       ),
     enableIdeation: z.boolean().optional().default(false),
-    reflections: z.coerce.number().int().min(1).max(10).optional()
+    reflections: z.coerce.number().int().min(1).max(10).optional(),
+    maxNumGenerations: z.coerce.number().int().min(1).max(20).optional().default(1)
   })
   .refine(
     (data) =>
@@ -121,6 +122,7 @@ async function structureHypothesisWithLLM(conversationText: string): Promise<{
 type ExtractionOptions = {
   enableIdeation?: boolean
   reflections?: number
+  maxNumGenerations?: number
   requestId?: string
 }
 
@@ -162,12 +164,14 @@ async function processExtractionInBackground(
 
     const enableIdeation = options.enableIdeation ?? false
     const reflections = options.reflections ?? 3
+    const maxNumGenerations = options.maxNumGenerations ?? 1
     const requestId = options.requestId
 
     const hypothesisUpdate: Record<string, any> = {
       title: structured.title,
       idea: structured.description,
-      extractionStatus: "completed"
+      extractionStatus: "completed",
+      extractedRawText: extractedText // Store full raw extraction (MongoDB 16MB doc limit allows this)
     }
 
     if (!enableIdeation) {
@@ -177,12 +181,14 @@ async function processExtractionInBackground(
     await updateHypothesis(hypothesisId, hypothesisUpdate)
 
     if (enableIdeation && requestId) {
+      console.error(`[ChatGPT Extract Background] Queuing ideation request=${requestId} with maxNumGenerations=${maxNumGenerations}`)
       const now = new Date()
       await createIdeationRequest({
         _id: requestId,
         hypothesisId,
         status: "QUEUED",
         reflections,
+        maxNumGenerations,
         createdAt: now,
         updatedAt: now
       })
@@ -193,7 +199,9 @@ async function processExtractionInBackground(
           reflections
         }
       })
+      console.error(`[ChatGPT Extract Background] Ideation queued successfully`)
     } else {
+      console.error(`[ChatGPT Extract Background] enableIdeation=${enableIdeation}, requestId=${requestId}, enqueueing run instead`)
       await enqueueRun(hypothesisId)
     }
 
@@ -234,7 +242,10 @@ export async function POST(req: NextRequest) {
     const hypothesisId = randomUUID()
     const enableIdeation = parsed.data.enableIdeation ?? false
     const reflections = parsed.data.reflections ?? 3
+    const maxNumGenerations = parsed.data.maxNumGenerations ?? 1
     const requestId = enableIdeation ? randomUUID() : undefined
+
+    console.error(`[ChatGPT Extract] hypothesisId=${hypothesisId}, enableIdeation=${enableIdeation}, reflections=${reflections}, maxNumGenerations=${maxNumGenerations}, requestId=${requestId}`)
 
     const hypothesis = await createHypothesis({
       _id: hypothesisId,
@@ -255,10 +266,13 @@ export async function POST(req: NextRequest) {
         : {})
     })
 
+    console.error(`[ChatGPT Extract] Hypothesis created, ideation=${enableIdeation}`)
+
     // Trigger background processing (don't await)
     processExtractionInBackground(hypothesisId, parsed.data.url, {
       enableIdeation,
       reflections,
+      maxNumGenerations,
       requestId
     }).catch(err => {
       console.error("Failed to process extraction in background:", err)
