@@ -941,7 +941,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     )
     print(f"[ideation-debug] Workshop file written to {workshop_path}")
     
-    max_generations = ideation_request.get("maxNumGenerations", 1)
+    max_generations = ideation.get("maxNumGenerations", 1)
     cmd = [
         sys.executable or "python3",
         "ai_scientist/perform_ideation_temp_free.py",
