@@ -677,18 +677,28 @@ def load_exp_summaries(base_folder):
         if osp.exists(path):
             try:
                 with open(path, "r") as f:
-                    loaded_summaries[key] = json.load(f)
+                    data = json.load(f)
+                    # If the loaded data is None or empty, use empty dict/list
+                    if data is None:
+                        print(f"Warning: {fname} contains null. Using empty data for {key}.")
+                        loaded_summaries[key] = {} if key != "ABLATION_SUMMARY" else []
+                    else:
+                        loaded_summaries[key] = data
             except json.JSONDecodeError:
                 print(
                     f"Warning: {fname} is not valid JSON. Using empty data for {key}."
                 )
-                loaded_summaries[key] = {}
+                loaded_summaries[key] = {} if key != "ABLATION_SUMMARY" else []
         else:
-            loaded_summaries[key] = {}
+            loaded_summaries[key] = {} if key != "ABLATION_SUMMARY" else []
     return loaded_summaries
 
 
 def filter_experiment_summaries(exp_summaries, step_name):
+    """
+    Filter experiment summaries to keep only relevant keys for a given step.
+    This function is designed to be robust against unexpected stage names or structures.
+    """
     if step_name == "citation_gathering":
         node_keys_to_keep = {
             "overall_plan",
@@ -716,29 +726,77 @@ def filter_experiment_summaries(exp_summaries, step_name):
             "exp_results_npy_files",
         }
     else:
-        raise ValueError(f"Invalid step name: {step_name}")
+        # Instead of raising, just warn and use a default set of keys
+        print(f"Warning: Unknown step name '{step_name}'. Using default key set.")
+        node_keys_to_keep = {
+            "overall_plan",
+            "analysis",
+            "metric",
+            "code",
+            "plot_analyses",
+            "vlm_feedback_summary",
+        }
 
     filtered_summaries = {}
+    
+    # Handle None or empty exp_summaries
+    if not exp_summaries or not isinstance(exp_summaries, dict):
+        print(f"Warning: exp_summaries is None or not a dict. Returning empty result.")
+        return filtered_summaries
+    
     for stage_name in exp_summaries.keys():
-        if stage_name in {"BASELINE_SUMMARY", "RESEARCH_SUMMARY"}:
+        stage_data = exp_summaries[stage_name]
+        
+        # Skip if the stage summary is None or not a dict/list
+        if stage_data is None:
+            print(f"Warning: {stage_name} is None. Skipping.")
+            continue
+        
+        if not isinstance(stage_data, (dict, list)):
+            print(f"Warning: {stage_name} has unexpected type {type(stage_data)}. Skipping.")
+            continue
+        
+        # Handle dict-based stages (e.g., BASELINE_SUMMARY, RESEARCH_SUMMARY, or any new ones)
+        if isinstance(stage_data, dict):
             filtered_summaries[stage_name] = {}
-            for key in exp_summaries[stage_name].keys():
-                if key in {"best node"}:
-                    filtered_summaries[stage_name][key] = {}
-                    for node_key in exp_summaries[stage_name][key].keys():
+            
+            # Look for "best node" key (common pattern)
+            if "best node" in stage_data:
+                filtered_summaries[stage_name]["best node"] = {}
+                best_node = stage_data["best node"]
+                
+                if best_node is not None and isinstance(best_node, dict):
+                    for node_key in best_node.keys():
                         if node_key in node_keys_to_keep:
-                            filtered_summaries[stage_name][key][node_key] = (
-                                exp_summaries[stage_name][key][node_key]
-                            )
-        elif stage_name == "ABLATION_SUMMARY" and step_name == "plot_aggregation":
-            filtered_summaries[stage_name] = {}
-            for ablation_summary in exp_summaries[stage_name]:
-                filtered_summaries[stage_name][ablation_summary["ablation_name"]] = {}
-                for node_key in ablation_summary.keys():
-                    if node_key in node_keys_to_keep:
-                        filtered_summaries[stage_name][
-                            ablation_summary["ablation_name"]
-                        ][node_key] = ablation_summary[node_key]
+                            filtered_summaries[stage_name]["best node"][node_key] = best_node[node_key]
+            
+            # Also keep any other top-level keys that match our filter
+            for key in stage_data.keys():
+                if key != "best node" and key in node_keys_to_keep:
+                    filtered_summaries[stage_name][key] = stage_data[key]
+        
+        # Handle list-based stages (e.g., ABLATION_SUMMARY)
+        elif isinstance(stage_data, list):
+            # Only process ablation summaries for plot_aggregation step
+            if stage_name == "ABLATION_SUMMARY" and step_name == "plot_aggregation":
+                filtered_summaries[stage_name] = {}
+                
+                for ablation_summary in stage_data:
+                    if not ablation_summary or not isinstance(ablation_summary, dict):
+                        print(f"Warning: Invalid ablation summary entry in {stage_name}. Skipping.")
+                        continue
+                    
+                    # Use ablation_name as key, with fallback
+                    ablation_name = ablation_summary.get("ablation_name", f"ablation_{len(filtered_summaries[stage_name])}")
+                    filtered_summaries[stage_name][ablation_name] = {}
+                    
+                    for node_key in ablation_summary.keys():
+                        if node_key in node_keys_to_keep:
+                            filtered_summaries[stage_name][ablation_name][node_key] = ablation_summary[node_key]
+            else:
+                # For other list-based stages, just keep them as-is (filtered by keys)
+                print(f"Warning: {stage_name} is a list but not handled specifically. Skipping for now.")
+    
     return filtered_summaries
 
 
