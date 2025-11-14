@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation"
 
 export function StartRunButton({
   hypothesisId,
+  ideaIndex = 0,
   disabled = false,
   label = "Launch Experiment"
 }: {
   hypothesisId: string
+  ideaIndex?: number
   disabled?: boolean
   label?: string
 }) {
@@ -24,7 +26,8 @@ export function StartRunButton({
         headers: {
           "content-type": "application/json",
           "Idempotency-Key": crypto.randomUUID()
-        }
+        },
+        body: JSON.stringify({ ideaIndex })
       })
       if (!response.ok) {
         setError("Failed to start run")

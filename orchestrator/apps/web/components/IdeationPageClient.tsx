@@ -71,6 +71,7 @@ export function IdeationPageClient({
   const [hypothesisFilter, setHypothesisFilter] = useState(initialHypothesisId ?? "")
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIdeaIndex, setSelectedIdeaIndex] = useState<number>(0)
   const pageSize = initialData.pageSize ?? 25
   const detailRef = useRef<HTMLDivElement | null>(null)
 
@@ -127,6 +128,11 @@ export function IdeationPageClient({
       return items[0]?._id ?? null
     })
   }, [items, hypothesisFilter])
+
+  // Reset selected idea index when switching to a different ideation
+  useEffect(() => {
+    setSelectedIdeaIndex(0)
+  }, [selectedId])
 
   const selectedItem = useMemo(
     () => items.find((item) => item._id === selectedId) ?? null,
@@ -389,10 +395,11 @@ export function IdeationPageClient({
 
             <StartRunButton
               hypothesisId={selectedItem.hypothesisId}
+              ideaIndex={selectedIdeaIndex}
               disabled={selectedItem.status !== "COMPLETED" || !selectedItem.ideas?.length}
               label={
                 selectedItem.status === "COMPLETED" && selectedItem.ideas?.length
-                  ? "Launch Experiment"
+                  ? `Launch Experiment with Idea ${selectedIdeaIndex + 1}`
                   : "Awaiting ideas"
               }
             />
@@ -449,12 +456,30 @@ export function IdeationPageClient({
               {(selectedItem.ideas ?? []).map((idea, index) => (
                 <div
                   key={`${idea.Name}-${index}`}
-                  className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-5"
+                  className={`rounded-xl border p-5 transition-all cursor-pointer ${
+                    index === selectedIdeaIndex
+                      ? "border-emerald-500/60 bg-emerald-950/30 ring-2 ring-emerald-500/20"
+                      : "border-slate-800/80 bg-slate-900/60 hover:border-slate-700"
+                  }`}
+                  onClick={() => setSelectedIdeaIndex(index)}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Idea {index + 1}</p>
-                      <h4 className="mt-1 text-lg font-semibold text-white">{idea.Title}</h4>
+                    <div className="min-w-0 flex-1 flex items-start gap-3">
+                      <input
+                        type="radio"
+                        checked={index === selectedIdeaIndex}
+                        onChange={() => setSelectedIdeaIndex(index)}
+                        className="mt-1 h-4 w-4 cursor-pointer accent-emerald-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-400">
+                          Idea {index + 1}
+                          {index === selectedIdeaIndex && (
+                            <span className="ml-2 text-emerald-400">✓ Selected for launch</span>
+                          )}
+                        </p>
+                        <h4 className="mt-1 text-lg font-semibold text-white">{idea.Title}</h4>
+                      </div>
                     </div>
                     <span className="rounded-full bg-slate-800/60 px-3 py-1 text-xs font-medium text-slate-300">
                       {idea.Name}

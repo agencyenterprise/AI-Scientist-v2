@@ -9,7 +9,8 @@ import { findHypothesisById } from "@/lib/repos/hypotheses.repo"
 export const runtime = "nodejs"
 
 const CreateRunSchema = z.object({
-  metadata: z.record(z.unknown()).optional()
+  metadata: z.record(z.unknown()).optional(),
+  ideaIndex: z.number().int().min(0).optional()
 })
 
 export async function GET(
@@ -46,6 +47,15 @@ export async function POST(
     const key = req.headers.get("Idempotency-Key")
     if (!key) {
       throw createBadRequest("Missing Idempotency-Key header")
+    }
+
+    // Update hypothesis's ideaJson to the selected idea if provided
+    if (parsed.data.ideaIndex !== undefined && hypothesis.ideation?.ideas) {
+      const selectedIdea = hypothesis.ideation.ideas[parsed.data.ideaIndex]
+      if (selectedIdea) {
+        const { updateHypothesis } = await import("@/lib/repos/hypotheses.repo")
+        await updateHypothesis(id, { ideaJson: selectedIdea })
+      }
     }
 
     const run = await withIdempotency(key, () => enqueueRun(id))

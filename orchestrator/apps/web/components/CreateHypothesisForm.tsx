@@ -17,7 +17,7 @@ export function CreateHypothesisForm() {
   const [extractionSuccess, setExtractionSuccess] = useState(false)
   const [extractionMessage, setExtractionMessage] = useState("")
   const [enableIdeation, setEnableIdeation] = useState(false)
-  const [reflections, setReflections] = useState(2)
+  const [reflections, setReflections] = useState(5)
   const [maxNumGenerations, setMaxNumGenerations] = useState(1)
   const [ideationQueueSize, setIdeationQueueSize] = useState(0)
   
@@ -69,7 +69,7 @@ export function CreateHypothesisForm() {
     setChatGptUrl("")
     setError(null)
     setEnableIdeation(false)
-    setReflections(2)
+    setReflections(5)
     setMaxNumGenerations(1)
     
     if (hasIdeation) {
@@ -399,7 +399,7 @@ export function CreateHypothesisForm() {
                   <span>10</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  How many refinement rounds to improve each idea. More rounds = better quality but slower.
+                  How many refinement rounds to improve each idea. Minimum 5 recommended for reliable finalization. More rounds = better quality but slower.
                 </p>
               </div>
 
