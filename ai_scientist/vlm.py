@@ -39,6 +39,9 @@ def encode_image_to_base64(image_path: str) -> str:
 @track_token_usage
 def make_llm_call(client, model, temperature, system_message, prompt):
     if "gpt" in model:
+        # gpt-5 only supports temperature=1.0
+        if "gpt-5" in model:
+            temperature = 1.0
         return client.chat.completions.create(
             model=model,
             messages=[

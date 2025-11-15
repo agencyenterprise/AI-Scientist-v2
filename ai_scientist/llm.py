@@ -86,6 +86,7 @@ def get_batch_responses_from_llm(
 
     if model == "gpt-5":
         # gpt-5 uses max_completion_tokens instead of max_tokens
+        # gpt-5 only supports temperature=1.0
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model,
@@ -93,7 +94,7 @@ def get_batch_responses_from_llm(
                 {"role": "system", "content": system_message},
                 *new_msg_history,
             ],
-            temperature=temperature,
+            temperature=1.0,
             max_completion_tokens=MAX_NUM_TOKENS,
             n=n_responses,
             stop=None,
@@ -103,7 +104,7 @@ def get_batch_responses_from_llm(
         new_msg_history = [
             new_msg_history + [{"role": "assistant", "content": c}] for c in content
         ]
-    elif "gpt" in model:
+    elif "gpt" in model and "gpt-5" not in model:
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model,
