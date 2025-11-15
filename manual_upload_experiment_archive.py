@@ -4,7 +4,7 @@ Manual script to upload experiment archive from pod to MinIO.
 Run this on the pod when an experiment directory needs to be manually archived.
 
 Usage:
-    python manual_upload_experiment_archive.py <run_id> [experiment_dir]
+    python manual_upload_experiment_archive.py <run_id> [experiment_dir] [control_plane_url]
     
 Example:
     python manual_upload_experiment_archive.py 4ea43a49-8747-42f8-9edb-10e6c0f6c7d6
@@ -12,6 +12,11 @@ Example:
     # Or specify explicit directory:
     python manual_upload_experiment_archive.py 4ea43a49-8747-42f8-9edb-10e6c0f6c7d6 \
         /workspace/AI-Scientist-v2/experiments/2025-11-14_08-37-14_operator_first_coinduction_protocol_run_4ea43a49-8747-42f8-9edb-10e6c0f6c7d6
+    
+    # Or specify control plane URL:
+    python manual_upload_experiment_archive.py 4ea43a49-8747-42f8-9edb-10e6c0f6c7d6 \
+        /path/to/experiment/dir \
+        https://ai-scientist-v2-production.up.railway.app
 """
 
 import os
@@ -147,6 +152,7 @@ def main():
     
     run_id = sys.argv[1]
     explicit_dir = sys.argv[2] if len(sys.argv) > 2 else None
+    control_plane_url_arg = sys.argv[3] if len(sys.argv) > 3 else None
     
     print(f"{'='*70}")
     print(f"🔧 Manual Experiment Archive Upload")
@@ -160,8 +166,8 @@ def main():
     
     print(f"Experiment dir: {experiment_dir}")
     
-    # Check control plane URL
-    control_plane_url = os.getenv("CONTROL_PLANE_URL", "http://localhost:3001")
+    # Check control plane URL (prefer arg > env var > default)
+    control_plane_url = control_plane_url_arg or os.getenv("CONTROL_PLANE_URL", "http://localhost:3001")
     print(f"Control plane: {control_plane_url}")
     
     # Create archive
