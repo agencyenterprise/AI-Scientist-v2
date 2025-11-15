@@ -6,9 +6,10 @@ import { type Run } from "@/lib/schemas/run"
 
 interface ErrorDisplayProps {
   run: Run
+  artifacts?: Artifact[]
 }
 
-export function ErrorDisplay({ run }: ErrorDisplayProps) {
+export function ErrorDisplay({ run, artifacts = [] }: ErrorDisplayProps) {
   const router = useRouter()
   const [showTraceback, setShowTraceback] = useState(false)
   const [traceback, setTraceback] = useState<string | null>(run.errorTraceback ?? null)
@@ -16,7 +17,16 @@ export function ErrorDisplay({ run }: ErrorDisplayProps) {
   const [pending, startTransition] = useTransition()
   const [retryError, setRetryError] = useState<string | null>(null)
 
-  if (run.status !== "FAILED" || !run.errorMessage) {
+  // If the experiment produced a lot of artifacts (100+) and has a final PDF, 
+  // it likely succeeded despite a late-stage error. Hide the error in this case.
+  const hasManyArtifacts = artifacts.length > 100
+  const hasFinalPdf = artifacts.some(
+    (artifact) =>
+      artifact.key.toLowerCase().includes("final") &&
+      artifact.key.toLowerCase().endsWith(".pdf")
+  )
+
+  if (run.status !== "FAILED" || !run.errorMessage || (hasManyArtifacts && hasFinalPdf)) {
     return null
   }
 
