@@ -3,12 +3,14 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { type Run } from "@/lib/schemas/run"
+import type { Artifact } from "@/lib/schemas/artifact"
 
 interface ErrorDisplayProps {
   run: Run
+  artifacts?: Artifact[]
 }
 
-export function ErrorDisplay({ run }: ErrorDisplayProps) {
+export function ErrorDisplay({ run, artifacts = [] }: ErrorDisplayProps) {
   const router = useRouter()
   const [showTraceback, setShowTraceback] = useState(false)
   const [traceback, setTraceback] = useState<string | null>(run.errorTraceback ?? null)
@@ -16,7 +18,16 @@ export function ErrorDisplay({ run }: ErrorDisplayProps) {
   const [pending, startTransition] = useTransition()
   const [retryError, setRetryError] = useState<string | null>(null)
 
-  if (run.status !== "FAILED" || !run.errorMessage) {
+  // Check if a final PDF exists (paper was successfully generated)
+  const hasFinalPdf = artifacts.some(
+    (artifact) =>
+      artifact.key.toLowerCase().includes("final") &&
+      artifact.key.toLowerCase().endsWith(".pdf")
+  )
+
+  // If paper was successfully generated, hide the error
+  // The paper generation succeeded even if there was an error afterward
+  if (run.status !== "FAILED" || !run.errorMessage || hasFinalPdf) {
     return null
   }
 

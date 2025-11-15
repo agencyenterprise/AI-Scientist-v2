@@ -155,7 +155,7 @@ export function RunDetailClient({ initialData }: { initialData: RunDetail }) {
         />
       </header>
 
-      <ErrorDisplay run={detail.run} />
+      <ErrorDisplay run={detail.run} artifacts={detail.artifacts} />
 
       <FinalPdfBanner runId={detail.run._id} artifacts={detail.artifacts} />
       
