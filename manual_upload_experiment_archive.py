@@ -112,26 +112,30 @@ def upload_archive_to_minio(run_id, archive_path, control_plane_url):
         # Step 3: Calculate SHA256
         sha256 = hashlib.sha256(file_bytes).hexdigest()
         
-        # Step 4: Register artifact in database
+        # Step 4: Register artifact in database via event system
         print(f"   Registering artifact in database...")
+        from uuid import uuid4
+        
+        event = {
+            "specversion": "1.0",
+            "id": str(uuid4()),
+            "source": "manual-upload-script",
+            "type": "ai.run.artifact.registered",
+            "subject": f"run/{run_id}",
+            "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "datacontenttype": "application/json",
+            "data": {
+                "key": f"runs/{run_id}/{filename}",
+                "size": len(file_bytes),
+                "sha256": sha256,
+                "contentType": "application/gzip",
+                "kind": "archive"
+            }
+        }
+        
         resp = requests.post(
             f"{control_plane_url}/api/ingest/event",
-            json={
-                "specversion": "1.0",
-                "id": f"artifact-{run_id}-{filename}",
-                "source": "manual-upload-script",
-                "type": "ai.run.artifact.registered",
-                "subject": f"run/{run_id}",
-                "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "datacontenttype": "application/json",
-                "data": {
-                    "key": f"runs/{run_id}/{filename}",
-                    "size": len(file_bytes),
-                    "sha256": sha256,
-                    "contentType": "application/gzip",
-                    "kind": "archive"
-                }
-            },
+            json=event,
             headers={"Content-Type": "application/json"},
             timeout=30
         )
