@@ -112,35 +112,40 @@ def upload_archive_to_minio(run_id, archive_path, control_plane_url):
         # Step 3: Calculate SHA256
         sha256 = hashlib.sha256(file_bytes).hexdigest()
         
-        # Step 4: Register artifact in database via event system
+        # Step 4: Try to register artifact in database via event system
+        # (This is best-effort; the file is already safely in MinIO)
         print(f"   Registering artifact in database...")
-        from uuid import uuid4
-        
-        event = {
-            "specversion": "1.0",
-            "id": str(uuid4()),
-            "source": "manual-upload-script",
-            "type": "ai.run.artifact.registered",
-            "subject": f"run/{run_id}",
-            "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "datacontenttype": "application/json",
-            "data": {
-                "key": f"runs/{run_id}/{filename}",
-                "size": len(file_bytes),
-                "sha256": sha256,
-                "contentType": "application/gzip",
-                "kind": "archive"
+        try:
+            from uuid import uuid4
+            
+            event = {
+                "specversion": "1.0",
+                "id": str(uuid4()),
+                "source": "manual-upload-script",
+                "type": "ai.run.artifact.registered",
+                "subject": f"run/{run_id}",
+                "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "datacontenttype": "application/json",
+                "data": {
+                    "key": f"runs/{run_id}/{filename}",
+                    "size": len(file_bytes),
+                    "sha256": sha256,
+                    "contentType": "application/gzip",
+                    "kind": "archive"
+                }
             }
-        }
-        
-        resp = requests.post(
-            f"{control_plane_url}/api/ingest/event",
-            json=event,
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
-        resp.raise_for_status()
-        print(f"   ✓ Artifact registered")
+            
+            resp = requests.post(
+                f"{control_plane_url}/api/ingest/event",
+                json=event,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            resp.raise_for_status()
+            print(f"   ✓ Artifact registered")
+        except Exception as reg_err:
+            print(f"   ⚠️ Could not register event (non-critical): {reg_err}")
+            print(f"   ℹ️  File is already safely uploaded to MinIO at: runs/{run_id}/{filename}")
         
         return True
         
