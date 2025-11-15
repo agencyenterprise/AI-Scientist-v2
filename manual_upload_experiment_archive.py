@@ -55,7 +55,7 @@ def get_experiment_dir(run_id, explicit_dir=None):
 
 
 def create_archive(experiment_dir):
-    """Create a .tar.gz archive of the experiment directory."""
+    """Create a .tar.gz archive of the experiment directory and its logs."""
     print(f"\n📦 Creating archive...")
     
     with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
@@ -63,8 +63,32 @@ def create_archive(experiment_dir):
     
     try:
         with tarfile.open(archive_path, 'w:gz') as tar:
+            # Add the experiment workspace directory
             print(f"   Adding experiment directory: {experiment_dir}")
             tar.add(experiment_dir, arcname=os.path.basename(experiment_dir))
+            
+            # Add the corresponding logs directory
+            # The logs are typically in experiments/../logs/0-run or similar
+            exp_parent = Path(experiment_dir).parent
+            exp_name = Path(experiment_dir).name
+            
+            # Try to find logs directory in various locations
+            possible_log_locations = [
+                exp_parent / "logs" / exp_name,  # Same level as workspace
+                Path("/workspace/AI-Scientist-v2/experiments") / exp_name.replace("experiments/", "logs/0-run"),
+                Path("/workspace/AI-Scientist-v2") / "logs" / "0-run",
+            ]
+            
+            logs_found = False
+            for logs_path in possible_log_locations:
+                if logs_path.exists() and logs_path.is_dir():
+                    print(f"   Adding logs directory: {logs_path}")
+                    tar.add(str(logs_path), arcname=f"logs/{logs_path.name}")
+                    logs_found = True
+                    break
+            
+            if not logs_found:
+                print(f"   ⚠️  Warning: Could not find logs directory, but continuing with workspace only")
             
             # Also add ideas if they exist
             ideas_path = Path("/workspace/AI-Scientist-v2/ai_scientist/ideas")
@@ -112,40 +136,40 @@ def upload_archive_to_minio(run_id, archive_path, control_plane_url):
         # Step 3: Calculate SHA256
         sha256 = hashlib.sha256(file_bytes).hexdigest()
         
-        # Step 4: Try to register artifact in database via event system
-        # (This is best-effort; the file is already safely in MinIO)
+        # Step 4: Register artifact directly in MongoDB database
         print(f"   Registering artifact in database...")
         try:
+            from pymongo import MongoClient
             from uuid import uuid4
             
-            event = {
-                "specversion": "1.0",
-                "id": str(uuid4()),
-                "source": "manual-upload-script",
-                "type": "ai.run.artifact.registered",
-                "subject": f"run/{run_id}",
-                "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "datacontenttype": "application/json",
-                "data": {
+            # Get MongoDB URL from environment
+            mongodb_url = os.getenv('MONGODB_URL')
+            if not mongodb_url:
+                print(f"   ⚠️ MONGODB_URL not set, skipping database registration")
+                print(f"   ℹ️  File is safely uploaded to MinIO at: runs/{run_id}/{filename}")
+            else:
+                mongo_client = MongoClient(mongodb_url, serverSelectionTimeoutMS=5000)
+                db = mongo_client['ai-scientist']
+                
+                # Insert artifact directly into artifacts collection
+                artifact_doc = {
+                    "_id": str(uuid4()),
+                    "runId": run_id,
                     "key": f"runs/{run_id}/{filename}",
+                    "uri": f"https://{os.getenv('MINIO_ENDPOINT', 'localhost')}/ai-scientist/runs/{run_id}/{filename}",
                     "size": len(file_bytes),
                     "sha256": sha256,
                     "contentType": "application/gzip",
-                    "kind": "archive"
+                    "kind": "archive",
+                    "createdAt": datetime.utcnow()
                 }
-            }
-            
-            resp = requests.post(
-                f"{control_plane_url}/api/ingest/event",
-                json=event,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
-            resp.raise_for_status()
-            print(f"   ✓ Artifact registered")
+                
+                result = db.artifacts.insert_one(artifact_doc)
+                print(f"   ✓ Artifact registered in MongoDB")
+                
         except Exception as reg_err:
-            print(f"   ⚠️ Could not register event (non-critical): {reg_err}")
-            print(f"   ℹ️  File is already safely uploaded to MinIO at: runs/{run_id}/{filename}")
+            print(f"   ⚠️ Could not register in database: {reg_err}")
+            print(f"   ℹ️  File is safely uploaded to MinIO at: runs/{run_id}/{filename}")
         
         return True
         
