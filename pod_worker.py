@@ -1749,6 +1749,14 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         db = mongo_client['ai-scientist']
         runs_collection = db["runs"]
         
+        # Copy best solutions to root even on failure so they're accessible
+        if 'idea_dir' in locals() and os.path.exists(idea_dir):
+            print(f"\n📋 Copying best solutions to experiment root (best-effort)...")
+            try:
+                copy_best_solutions_to_root(idea_dir)
+            except Exception as copy_err:
+                print(f"⚠️ Could not copy best solutions: {copy_err}")
+        
         # Try to upload experiment archive as a best-effort even on failure
         # This preserves partial results and code for debugging
         print(f"\n📦 Attempting to archive partial experiment results...")
