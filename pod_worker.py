@@ -1749,6 +1749,32 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         db = mongo_client['ai-scientist']
         runs_collection = db["runs"]
         
+        # Try to upload experiment archive as a best-effort even on failure
+        # This preserves partial results and code for debugging
+        print(f"\n📦 Attempting to archive partial experiment results...")
+        try:
+            import tarfile
+            import tempfile
+            
+            if 'idea_dir' in locals() and os.path.exists(idea_dir):
+                with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
+                    archive_path = tmp.name
+                
+                with tarfile.open(archive_path, 'w:gz') as tar:
+                    tar.add(idea_dir, arcname=os.path.basename(idea_dir))
+                    if os.path.exists('ai_scientist/ideas'):
+                        tar.add('ai_scientist/ideas', arcname='ideas')
+                
+                archive_uploaded = upload_artifact(run_id, archive_path, "archive")
+                os.unlink(archive_path)
+                
+                if archive_uploaded:
+                    print(f"✓ Partial experiment archive uploaded to MinIO")
+                else:
+                    print(f"⚠️ Archive upload failed - partial results may not be retrievable")
+        except Exception as archive_err:
+            print(f"⚠️ Could not create/upload partial archive: {archive_err}")
+        
         # First, emit the failure event before updating the database
         # This ensures the frontend gets notified immediately
         event_emitter.run_failed(
