@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import OpenAI from "openai"
 import { ChatGPTSharedExtractor } from "@/lib/services/chatgpt-extractor.service"
@@ -75,7 +75,7 @@ async function structureHypothesisWithLLM(conversationText: string): Promise<{
     title?: string
     hypothesis?: string
     experimentSummary?: string
-    keyTerms?: string
+    keyTerms?: string | string[] | Record<string, string>
   }
 
   // Build the full description
@@ -89,8 +89,25 @@ async function structureHypothesisWithLLM(conversationText: string): Promise<{
     description += `# Experiment Summary\n${parsed.experimentSummary}\n\n`
   }
   
-  if (parsed.keyTerms && parsed.keyTerms.trim()) {
-    description += `# Key Terms\n${parsed.keyTerms}`
+  // Handle keyTerms which could be string, array, or object depending on LLM output
+  if (parsed.keyTerms) {
+    let keyTermsText = ""
+    
+    if (typeof parsed.keyTerms === "string") {
+      keyTermsText = parsed.keyTerms.trim()
+    } else if (Array.isArray(parsed.keyTerms)) {
+      // LLM returned an array of terms
+      keyTermsText = parsed.keyTerms.join("\n")
+    } else if (typeof parsed.keyTerms === "object") {
+      // LLM returned an object like { "term": "definition", ... }
+      keyTermsText = Object.entries(parsed.keyTerms)
+        .map(([term, def]) => `**${term}**: ${def}`)
+        .join("\n")
+    }
+    
+    if (keyTermsText) {
+      description += `# Key Terms\n${keyTermsText}`
+    }
   }
 
   return {
@@ -133,7 +150,13 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("ChatGPT extraction error:", error)
+    // Enhanced logging for Railway visibility
+    console.error("[extract-chatgpt] Error occurred:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : typeof error,
+      timestamp: new Date().toISOString()
+    })
     
     if (error instanceof Error) {
       return NextResponse.json(

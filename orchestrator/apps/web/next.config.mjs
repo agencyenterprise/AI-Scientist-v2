@@ -1,10 +1,15 @@
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   typedRoutes: true,
-  output: "standalone",
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb"
+    }
+  },
+  // Enable server logging in production
+  logging: {
+    fetches: {
+      fullUrl: true
     }
   }
 }
