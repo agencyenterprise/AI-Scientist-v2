@@ -59,6 +59,8 @@ AVAILABLE_LLMS = [
 
 
 # Get N responses from a single message, used for ensembling.
+# Note: Don't use @track_token_usage here as this function returns a processed
+# tuple (content, msg_history), not an OpenAI response object with .model attribute
 @backoff.on_exception(
     backoff.expo,
     (
@@ -68,7 +70,6 @@ AVAILABLE_LLMS = [
         anthropic.RateLimitError,
     ),
 )
-@track_token_usage
 def get_batch_responses_from_llm(
     prompt,
     client,
