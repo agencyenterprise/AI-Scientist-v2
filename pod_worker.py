@@ -1847,6 +1847,10 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
     CURRENT_STAGE = "writeup_retry"
     EVENT_SEQ = run.get("lastEventSeq", 0)
     
+    # CRITICAL: Sync event_emitter's sequence counter with the run's lastEventSeq
+    # Without this, new events would have seq < lastEventSeq and be rejected by orchestrator
+    event_emitter.set_seq_counter(EVENT_SEQ)
+    
     print(f"\n{'='*60}")
     print(f"📝 WRITEUP RETRY: {run_id}")
     print(f"{'='*60}\n")

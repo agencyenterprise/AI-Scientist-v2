@@ -16,6 +16,14 @@ class CloudEventEmitter:
         self.source_id = source_id
         self.seq_counter = 0
     
+    def set_seq_counter(self, seq: int) -> None:
+        """Set the sequence counter to sync with existing run event sequence.
+        
+        This must be called before emitting events for an existing run to ensure
+        new events have sequence numbers greater than the run's lastEventSeq.
+        """
+        self.seq_counter = seq
+    
     def _create_envelope(self, event_type: str, run_id: str, data: Dict[str, Any]) -> Dict:
         """Create CloudEvents envelope."""
         self.seq_counter += 1
