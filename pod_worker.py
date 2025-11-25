@@ -946,7 +946,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
         sys.executable or "python3",
         "ai_scientist/perform_ideation_temp_free.py",
         "--model",
-        "gpt-5-mini",
+        "gpt-5.1",
         "--workshop-file",
         str(workshop_path),
         "--num-reflections",
@@ -1249,9 +1249,9 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         
-        plot_model = config.get("writeup", {}).get("plot_model", "gpt-5-mini")
-        small_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
-        big_model = config.get("writeup", {}).get("big_model", "gpt-5")
+        plot_model = config.get("writeup", {}).get("plot_model", "gpt-5.1")
+        small_model = config.get("writeup", {}).get("small_model", "gpt-5.1")
+        big_model = config.get("writeup", {}).get("big_model", "gpt-5.1")
         
         print(f"✓ Using models from config: plot={plot_model}, small={small_model}, big={big_model}")
         
@@ -1470,7 +1470,7 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 writeup_cfg.get("review_model")
                 or writeup_cfg.get("big_model")
                 or writeup_cfg.get("small_model")
-                or "gpt-5-mini"
+                or "gpt-5.1"
             )
             event_emitter.validation_auto_started(run_id, review_model)
             event_emitter.log(run_id, f"Using review model: {review_model}", "info", "Stage_4")

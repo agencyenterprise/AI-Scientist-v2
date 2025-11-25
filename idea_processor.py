@@ -215,7 +215,7 @@ class IdeaProcessor:
         ideation_cmd = (
             f"python ai_scientist/perform_ideation_temp_free.py "
             f"--workshop-file \"ai_scientist/ideas/{name}.md\" "
-            f"--model gpt-5 "
+            f"--model gpt-5.1 "
             f"--max-num-generations 2 "
             f"--num-reflections 5"
         )
@@ -241,10 +241,10 @@ class IdeaProcessor:
             f"python launch_scientist_bfts.py "
             f"--load_ideas \"ai_scientist/ideas/{name}.json\" "
             f"--add_dataset_ref "
-            f"--model_writeup gpt-5 "
-            f"--model_citation gpt-5-mini "
-            f"--model_review gpt-5-mini "
-            f"--model_agg_plots gpt-5 "
+            f"--model_writeup gpt-5.1 "
+            f"--model_citation gpt-5.1 "
+            f"--model_review gpt-5.1 "
+            f"--model_agg_plots gpt-5.1 "
             f"--num_cite_rounds 20"
         )
         

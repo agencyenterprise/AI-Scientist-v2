@@ -51,7 +51,7 @@ async function structureHypothesisWithLLM(conversationText: string): Promise<{
   // Use full conversation - GPT-5 can handle large contexts
   // No truncation needed
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: "gpt-5.1",
     messages: [
       {
         role: "system",

@@ -12,8 +12,7 @@ MAX_NUM_TOKENS = 4096
 
 AVAILABLE_LLMS = [
     # Newer generic aliases (ensure OpenAI supports them in your account)
-    "gpt-5",
-    "gpt-5-mini",
+    "gpt-5.1",
     "claude-3-5-sonnet-20240620",
     "claude-3-5-sonnet-20241022",
     # OpenAI models
@@ -27,7 +26,7 @@ AVAILABLE_LLMS = [
     "gpt-4.1-2025-04-14",
     "gpt-4.1-mini",
     "gpt-4.1-mini-2025-04-14",
-    "gpt-5",
+    "gpt-5.1",
     "o1",
     "o1-2024-12-17",
     "o1-preview-2024-09-12",
@@ -84,7 +83,7 @@ def get_batch_responses_from_llm(
     if msg_history is None:
         msg_history = []
 
-    if model == "gpt-5":
+    if "gpt-5" in model:
         # gpt-5 uses max_completion_tokens instead of max_tokens
         # gpt-5 only supports temperature=1.0
         new_msg_history = msg_history + [{"role": "user", "content": msg}]

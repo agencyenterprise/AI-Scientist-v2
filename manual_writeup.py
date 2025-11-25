@@ -26,9 +26,9 @@ print(f"📁 Running writeup for: {experiment_dir}")
 with open("bfts_config.yaml", 'r') as f:
     config = yaml.safe_load(f)
 
-plot_model = config.get("writeup", {}).get("plot_model", "gpt-5-mini")
-small_model = config.get("writeup", {}).get("small_model", "gpt-5-mini")
-big_model = config.get("writeup", {}).get("big_model", "gpt-5")
+plot_model = config.get("writeup", {}).get("plot_model", "gpt-5.1")
+small_model = config.get("writeup", {}).get("small_model", "gpt-5.1")
+big_model = config.get("writeup", {}).get("big_model", "gpt-5.1")
 
 print(f"✓ Models: plot={plot_model}, small={small_model}, big={big_model}")
 

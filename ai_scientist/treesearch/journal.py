@@ -483,7 +483,7 @@ class Journal:
                 system_message=prompt,
                 user_message=None,
                 func_spec=node_selection_spec,
-                model="gpt-5-mini",
+                model="gpt-5.1",
                 temperature=1.0,  # gpt-5 family requires temperature=1.0
             )
 

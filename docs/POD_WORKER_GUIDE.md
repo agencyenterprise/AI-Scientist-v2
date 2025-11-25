@@ -100,7 +100,7 @@ Optional:
 1. **User creates hypothesis** via frontend.
    - If *Enable ideation* is checked, the frontend creates an entry in `ideation_requests` and marks the hypothesis with `ideation.status = "QUEUED"`.
    - Otherwise, the frontend immediately creates a run in MongoDB with `status: "QUEUED"` (legacy behaviour).
-2. **Ideation workers poll** `ideation_requests` (when running in `--mode ideation` or `--mode hybrid`). They call `perform_ideation_temp_free.py` (model `gpt-5-mini`) and push ideas back onto the hypothesis, selecting the first idea as `ideaJson`.
+2. **Ideation workers poll** `ideation_requests` (when running in `--mode ideation` or `--mode hybrid`). They call `perform_ideation_temp_free.py` (model `gpt-5.1`) and push ideas back onto the hypothesis, selecting the first idea as `ideaJson`.
 3. **Experiment pods poll** the `runs` collection every ~10 seconds.
 4. **Experiment worker atomically claims a run** via `findOneAndUpdate`:
    ```python

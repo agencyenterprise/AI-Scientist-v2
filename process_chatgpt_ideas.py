@@ -304,7 +304,7 @@ Return a JSON object with:
   "context": "Any critical background context or domain information"
 }"""
 
-    def __init__(self, model: str = "gpt-5-mini"):
+    def __init__(self, model: str = "gpt-5.1"):
         self.model = model
         self.client, self.client_model = create_client(model)
     
@@ -372,7 +372,7 @@ class IdeationProcessor:
     Handles the Sakana ideation process with retry logic for failed or empty results.
     """
     
-    def __init__(self, model: str = "gpt-5", num_reflections: int = 5, max_retries: int = 3):
+    def __init__(self, model: str = "gpt-5.1", num_reflections: int = 5, max_retries: int = 3):
         self.model = model
         self.num_reflections = num_reflections
         self.max_retries = max_retries
@@ -473,8 +473,8 @@ class ChatGPTIdeaPipeline:
     
     def __init__(
         self,
-        summarizer_model: str = "gpt-5-mini",
-        ideation_model: str = "gpt-5",
+        summarizer_model: str = "gpt-5.1",
+        ideation_model: str = "gpt-5.1",
         num_reflections: int = 5,
         parallel_ideation: int = 2,
         mongodb_url: Optional[str] = None
@@ -762,14 +762,14 @@ Examples:
     parser.add_argument(
         "--summarizer-model",
         type=str,
-        default="gpt-5-mini",
-        help="Model for summarization (default: gpt-5-mini)"
+        default="gpt-5.1",
+        help="Model for summarization (default: gpt-5.1)"
     )
     parser.add_argument(
         "--ideation-model",
         type=str,
-        default="gpt-5",
-        help="Model for ideation (default: gpt-5)"
+        default="gpt-5.1",
+        help="Model for ideation (default: gpt-5.1)"
     )
     parser.add_argument(
         "--num-reflections",

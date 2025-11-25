@@ -15,7 +15,7 @@ AVAILABLE_VLMS = [
     "gpt-4o-2024-11-20",
     "gpt-4o-mini-2024-07-18",
     "o3-mini",
-    "gpt-5",
+    "gpt-5.1",
 ]
 
 
@@ -71,10 +71,10 @@ def make_llm_call(client, model, temperature, system_message, prompt):
 
 @track_token_usage
 def make_vlm_call(client, model, temperature, system_message, prompt):
-    if "gpt" in model or model == "gpt-5":
+    if "gpt" in model:
         # GPT-5 uses max_completion_tokens instead of max_tokens
         # and only supports temperature=1
-        if model == "gpt-5":
+        if "gpt-5" in model:
             return client.chat.completions.create(
                 model=model,
                 messages=[
@@ -180,7 +180,7 @@ def create_client(model: str) -> tuple[Any, str]:
         "gpt-4o-2024-11-20",
         "gpt-4o-mini-2024-07-18",
         "o3-mini",
-        "gpt-5",
+        "gpt-5.1",
     ]:
         print(f"Using OpenAI API with model {model}.")
         return openai.OpenAI(), model
@@ -260,7 +260,7 @@ def get_batch_responses_from_vlm(
         "gpt-4o-2024-11-20",
         "gpt-4o-mini-2024-07-18",
         "o3-mini",
-        "gpt-5",
+        "gpt-5.1",
     ]:
         # Convert single image path to list
         if isinstance(image_paths, str):
@@ -285,7 +285,7 @@ def get_batch_responses_from_vlm(
 
         # Get multiple responses
         # GPT-5 uses max_completion_tokens instead of max_tokens and only supports temperature=1
-        if model == "gpt-5":
+        if "gpt-5" in model:
             response = client.chat.completions.create(
                 model=model,
                 messages=[

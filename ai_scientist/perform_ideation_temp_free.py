@@ -280,7 +280,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-5",
+        default="gpt-5.1",
         help="Model to use for AI Scientist.",
     )
     parser.add_argument(
