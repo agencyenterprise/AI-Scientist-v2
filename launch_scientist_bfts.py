@@ -408,7 +408,7 @@ if __name__ == "__main__":
                 writeup_success = perform_icbinb_writeup(
                     base_folder=idea_dir,
                     big_model=args.model_writeup,
-                    page_limit=4,
+                    page_limit=8,
                     citations_text=citations_text,
                 )
             if writeup_success:

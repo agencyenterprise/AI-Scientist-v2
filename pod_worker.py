@@ -9,7 +9,7 @@ import requests
 import socket
 import re
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from functools import partial
@@ -1249,11 +1249,13 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         
-        plot_model = config.get("writeup", {}).get("plot_model", "gpt-5.1")
-        small_model = config.get("writeup", {}).get("small_model", "gpt-5.1")
-        big_model = config.get("writeup", {}).get("big_model", "gpt-5.1")
+        writeup_config = config.get("writeup", {})
+        plot_model = writeup_config.get("plot_model", "gpt-5.1")
+        small_model = writeup_config.get("small_model", "gpt-5.1")
+        big_model = writeup_config.get("big_model", "gpt-5.1")
+        page_limit = writeup_config.get("page_limit", 8)
         
-        print(f"✓ Using models from config: plot={plot_model}, small={small_model}, big={big_model}")
+        print(f"✓ Using from config: plot={plot_model}, small={small_model}, big={big_model}, pages={page_limit}")
         
         # Stage 2: Aggregate plots
         ensure_run_not_canceled(db, run_id)
@@ -1356,12 +1358,12 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
 
             ensure_run_not_canceled(db, run_id)
             
-            event_emitter.log(run_id, f"Starting writeup generation using model: {big_model} (4 pages max)", "info", "Stage_3")
+            event_emitter.log(run_id, f"Starting writeup generation using model: {big_model} ({page_limit} pages max)", "info", "Stage_3")
             
             writeup_success = perform_writeup(
                 base_folder=idea_dir,
                 big_model=big_model,
-                page_limit=4,
+                page_limit=page_limit,
                 citations_text=citations_text
             )
 
@@ -1444,7 +1446,22 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     event_emitter.log(run_id, "No PDF found after writeup", "error", "Stage_3")
             else:
                 print(f"⚠️ Writeup did not succeed, skipping PDF upload")
-                event_emitter.log(run_id, "Writeup generation failed", "error", "Stage_3")
+                event_emitter.log(run_id, "Writeup generation failed - run will be marked as failed", "error", "Stage_3")
+                
+                # Mark run as failed since we can't produce a paper
+                db['runs'].update_one(
+                    {"_id": run_id},
+                    {
+                        "$set": {
+                            "status": "FAILED",
+                            "failedAt": datetime.now(timezone.utc),
+                            "errorMessage": "Paper generation (Stage 3) failed - writeup did not complete successfully"
+                        }
+                    }
+                )
+                event_emitter.run_failed(run_id, "Paper generation failed")
+                emitter.flush()
+                return  # Don't continue to Stage 4 without a paper
             
             db['runs'].update_one(
                 {"_id": run_id},
@@ -1954,7 +1971,7 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
         big_model = writeup_config.get("big_model", "o1-2024-12-17")
         num_cite_rounds = writeup_config.get("num_cite_rounds", 20)
         n_reflections = writeup_config.get("n_writeup_reflections", 3)
-        page_limit = writeup_config.get("page_limit", 4)
+        page_limit = writeup_config.get("page_limit", 8)
         
         emit_event("ai.run.log", {
             "run_id": run_id,

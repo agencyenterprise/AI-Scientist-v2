@@ -21,6 +21,10 @@ export function CreateHypothesisForm() {
   const [maxNumGenerations, setMaxNumGenerations] = useState(1)
   const [ideationQueueSize, setIdeationQueueSize] = useState(0)
   
+  // Additional context state
+  const [enableAdditionalContext, setEnableAdditionalContext] = useState(false)
+  const [additionalContext, setAdditionalContext] = useState("")
+  
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [modalTitle, setModalTitle] = useState("")
@@ -71,6 +75,8 @@ export function CreateHypothesisForm() {
     setEnableIdeation(false)
     setReflections(5)
     setMaxNumGenerations(1)
+    setEnableAdditionalContext(false)
+    setAdditionalContext("")
     
     if (hasIdeation) {
       refreshIdeationQueue()
@@ -131,7 +137,8 @@ export function CreateHypothesisForm() {
           url: chatGptUrl,
           enableIdeation: enableIdeation && !IDEATION_LOCKED,
           reflections,
-          maxNumGenerations: enableIdeation ? maxNumGenerations : 1
+          maxNumGenerations: enableIdeation ? maxNumGenerations : 1,
+          ...(enableAdditionalContext && additionalContext.trim() && { additionalContext: additionalContext.trim() })
         })
       })
 
@@ -167,7 +174,8 @@ export function CreateHypothesisForm() {
           title: confirmedTitle,
           idea: confirmedDescription,
           enableIdeation: enableIdeation && !IDEATION_LOCKED,
-          reflections
+          reflections,
+          ...(enableAdditionalContext && additionalContext.trim() && { additionalContext: additionalContext.trim() })
         })
       })
       const data = await response.json().catch(() => null)
@@ -193,7 +201,8 @@ export function CreateHypothesisForm() {
         title,
         idea,
         enableIdeation: enableIdeation && !IDEATION_LOCKED,
-        reflections
+        reflections,
+        ...(enableAdditionalContext && additionalContext.trim() && { additionalContext: additionalContext.trim() })
       }
       const response = await fetch("/api/hypotheses", {
         method: "POST",
@@ -249,6 +258,43 @@ export function CreateHypothesisForm() {
             disabled={extracting || pending}
             required
           />
+        </div>
+
+        {/* Additional Context Section */}
+        <div className="space-y-3">
+          <label
+            className={`inline-flex w-fit items-center gap-3 rounded-full border border-slate-800/60 px-4 py-2 text-sm font-medium shadow-[0_12px_36px_-30px_rgba(14,165,233,0.2)] ${
+              enableAdditionalContext
+                ? "cursor-pointer bg-amber-900/40 text-amber-200 border-amber-600/40"
+                : "cursor-pointer bg-slate-900/60 text-slate-200"
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded-sm border-slate-600 bg-slate-900 text-amber-400 focus:ring-2 focus:ring-amber-400"
+              checked={enableAdditionalContext}
+              onChange={(event) => setEnableAdditionalContext(event.target.checked)}
+              disabled={extracting || pending}
+            />
+            Add additional context
+          </label>
+          
+          {enableAdditionalContext && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">
+                This extra context will be passed to the experiment creation and refiner prompts. Use it for special instructions, constraints, or background information.
+              </p>
+              <textarea
+                id="additionalContext"
+                placeholder="Add any additional context, constraints, or special instructions for the AI Scientist. For example: preferred methods, specific datasets to use, constraints on the approach, or domain-specific knowledge."
+                className="w-full min-h-[180px] resize-none rounded-3xl border border-amber-800/50 bg-slate-950/70 px-5 py-4 text-base leading-relaxed text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-amber-500/50 focus:ring-2 focus:ring-amber-400/20 disabled:opacity-50"
+                rows={6}
+                value={additionalContext}
+                onChange={(event) => setAdditionalContext(event.target.value)}
+                disabled={extracting || pending}
+              />
+            </div>
+          )}
         </div>
         
         <div className="relative py-4">

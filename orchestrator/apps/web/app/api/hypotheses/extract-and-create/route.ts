@@ -23,7 +23,9 @@ const ExtractAndCreateSchema = z
       ),
     enableIdeation: z.boolean().optional().default(false),
     reflections: z.coerce.number().int().min(1).max(10).optional(),
-    maxNumGenerations: z.coerce.number().int().min(1).max(20).optional().default(1)
+    maxNumGenerations: z.coerce.number().int().min(1).max(20).optional().default(1),
+    /** Optional additional context to be passed to experiment creation and refiner prompts */
+    additionalContext: z.string().optional()
   })
   .refine(
     (data) =>
@@ -141,6 +143,7 @@ type ExtractionOptions = {
   reflections?: number
   maxNumGenerations?: number
   requestId?: string
+  additionalContext?: string
 }
 
 async function processExtractionInBackground(
@@ -188,7 +191,8 @@ async function processExtractionInBackground(
       title: structured.title,
       idea: structured.description,
       extractionStatus: "completed",
-      extractedRawText: extractedText // Store full raw extraction (MongoDB 16MB doc limit allows this)
+      extractedRawText: extractedText, // Store full raw extraction (MongoDB 16MB doc limit allows this)
+      ...(options.additionalContext && { additionalContext: options.additionalContext })
     }
 
     if (!enableIdeation) {
@@ -261,6 +265,7 @@ export async function POST(req: NextRequest) {
     const reflections = parsed.data.reflections ?? 3
     const maxNumGenerations = parsed.data.maxNumGenerations ?? 1
     const requestId = enableIdeation ? randomUUID() : undefined
+    const additionalContext = parsed.data.additionalContext
 
     console.error(`[ChatGPT Extract] hypothesisId=${hypothesisId}, enableIdeation=${enableIdeation}, reflections=${reflections}, maxNumGenerations=${maxNumGenerations}, requestId=${requestId}`)
 
@@ -272,6 +277,7 @@ export async function POST(req: NextRequest) {
       createdBy: "chatgpt",
       chatGptUrl: parsed.data.url,
       extractionStatus: "extracting",
+      ...(additionalContext && { additionalContext }),
       ...(enableIdeation
         ? {
             ideation: {
@@ -290,7 +296,8 @@ export async function POST(req: NextRequest) {
       enableIdeation,
       reflections,
       maxNumGenerations,
-      requestId
+      requestId,
+      additionalContext
     }).catch(err => {
       console.error("Failed to process extraction in background:", err)
     })

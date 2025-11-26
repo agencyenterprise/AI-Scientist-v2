@@ -235,7 +235,7 @@ def extract_page_line_counts(pdf_file, first_page, last_page):
     return page_lines
 
 
-def check_page_limit(pdf_file, page_limit=4, timeout=30):
+def check_page_limit(pdf_file, page_limit=8, timeout=30):
     """
     Compile the LaTeX project in a temporary folder, then determine where the
     "References" section begins using cleaned text extraction. Next, count the
@@ -302,33 +302,45 @@ def check_page_limit(pdf_file, page_limit=4, timeout=30):
 
 
 def get_reflection_page_info(reflection_pdf, page_limit):
+    """Generate page info for reflections.
+    
+    The info is informative rather than prescriptive - tells the model where it stands
+    without forcing artificial stretching or compression. Only enforce hard limits when exceeded.
+    """
     info = check_page_limit(reflection_pdf, page_limit)
     if info is not None:
+        # Calculate approximate current page count
+        lines_per_page = info['allowed_lines'] / page_limit if page_limit > 0 else 50
+        current_pages = info['used_lines'] / lines_per_page if lines_per_page > 0 else 0
+        
         if "excess" in info:
+            # Over the limit - this is a HARD constraint that must be enforced
             reflection_page_info = (
-                f"\nCurrently, 'References' begins on page {info['ref_page']}, approximately on line {info['ref_line']}. "
-                f"The main text (before the references) uses {info['used_lines']} lines, which exceeds the allowed {info['allowed_lines']} lines for a {page_limit}-page limit by {info['excess']} lines. "
-                f"DO NOT USE MORE THAN {page_limit} PAGES FOR THE MAIN TEXT. Please reduce the text or resize the plot to meet the page limit. "
-                f"Consider grouping plots together to make the paper more concise. "
-                f"Papers often look more professional if the main text is just under {page_limit} pages in length.\n"
+                f"\n**PAGE STATUS**: The main text currently uses approximately {current_pages:.1f} pages "
+                f"(References begin on page {info['ref_page']}, line {info['ref_line']}). "
+                f"This EXCEEDS the {page_limit}-page limit by {info['excess']} lines. "
+                f"You MUST reduce content to fit within {page_limit} pages. "
+                f"Consider: condensing verbose explanations, moving non-essential figures to appendix, "
+                f"or removing redundant content.\n"
             )
         elif "available" in info:
+            # Under the limit - just inform, don't force padding
             reflection_page_info = (
-                f"\nCurrently, 'References' begins on page {info['ref_page']}, approximately on line {info['ref_line']}. "
-                f"The main text (before the references) uses {info['used_lines']} lines, leaving {info['available']} lines available out of the allowed {info['allowed_lines']} lines (which corresponds to {page_limit} pages). "
-                f"DO NOT USE MORE THAN {page_limit} PAGES FOR THE MAIN TEXT. You can add up to {info['available']} lines if needed, "
-                f"but papers often look more professional if the main text is just under {page_limit} pages in length.\n"
+                f"\n**PAGE STATUS**: The main text currently uses approximately {current_pages:.1f} pages "
+                f"(References begin on page {info['ref_page']}, line {info['ref_line']}). "
+                f"This is within the {page_limit}-page limit with {info['available']} lines available. "
+                f"The paper length is appropriate - do not artificially stretch or pad content. "
+                f"Only add material if it genuinely improves the paper's scientific contribution.\n"
             )
         else:
-            # Fallback in case the info dictionary doesn't contain 'excess' or 'available'
+            # Fallback
             reflection_page_info = (
-                f"\nCurrently, 'References' begins on page {info.get('ref_page', '?')}, approximately on line {info.get('ref_line', '?')}. "
-                f"The page limit is {page_limit} pages for the main text before the references. "
-                f"DO NOT USE MORE THAN {page_limit} PAGES FOR THE MAIN TEXT. Adjust your content accordingly.\n"
+                f"\n**PAGE STATUS**: References begin on page {info.get('ref_page', '?')}, line {info.get('ref_line', '?')}. "
+                f"The page limit is {page_limit} pages for main text. Ensure content fits appropriately.\n"
             )
     else:
         reflection_page_info = (
-            "\nCould not detect 'References' page (compilation or detection failed).\n"
+            "\n**PAGE STATUS**: Could not detect 'References' page (compilation or detection may have failed).\n"
         )
 
     return reflection_page_info
@@ -920,7 +932,7 @@ def perform_writeup(
     small_model="gpt-4o-2024-05-13",
     big_model="o1-2024-12-17",
     n_writeup_reflections=3,
-    page_limit=4,
+    page_limit=8,
 ):
     pdf_file = osp.join(base_folder, f"{osp.basename(base_folder)}.pdf")
     latex_folder = osp.join(base_folder, "latex")
@@ -1266,7 +1278,16 @@ If you believe you are done with reflection, simply say: "I am done"."""
         reflection_page_info = get_reflection_page_info(reflection_pdf, page_limit)
 
         final_reflection_prompt = f"""{reflection_page_info}
-USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
+
+Review the page status above. If the paper exceeds the limit, make targeted cuts.
+If the paper is within limits, no changes are needed - do not artificially pad or stretch content.
+
+If no changes are needed, respond with "NO CHANGES NEEDED".
+Otherwise, provide the complete updated LaTeX code wrapped in triple backticks with "latex" syntax highlighting:
+
+```latex
+<UPDATED LATEX CODE>
+```"""
         reflection_response, msg_history = get_response_from_llm(
             prompt=final_reflection_prompt,
             client=big_client,
@@ -1284,33 +1305,47 @@ USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
 
         print(f"reflection step {i+1}")
 
-        reflection_code_match = re.search(
-            r"```latex(.*?)```", reflection_response, re.DOTALL
-        )
-        if reflection_code_match:
-            reflected_latex_code = reflection_code_match.group(1).strip()
-            if reflected_latex_code != current_latex:
-                final_text = reflected_latex_code
-                cleanup_map = {
-                    "</end": r"\\end",
-                    "</begin": r"\\begin",
-                    "’": "'",
-                }
-                for bad_str, repl_str in cleanup_map.items():
-                    final_text = final_text.replace(bad_str, repl_str)
-                final_text = re.sub(r"(\d+(?:\.\d+)?)%", r"\1\\%", final_text)
-
-                with open(writeup_file, "w") as fo:
-                    fo.write(final_text)
-
-                compile_latex(latex_folder, reflection_pdf)
-            else:
-                print(f"No changes in reflection page step.")
+        # Check if model indicated no changes needed
+        if "NO CHANGES NEEDED" in reflection_response.upper() or "NO CHANGES ARE NEEDED" in reflection_response.upper():
+            print("Model indicated no page limit changes needed. Using current LaTeX.")
+            compile_latex(latex_folder, reflection_pdf)
         else:
-            print(f"ERROR: No valid LaTeX code block found in final reflection")
-            print(f"Response length: {len(reflection_response)} chars")
-            print(f"Response preview: {reflection_response[:500] if len(reflection_response) > 0 else 'Empty'}")
-            return False
+            reflection_code_match = re.search(
+                r"```latex(.*?)```", reflection_response, re.DOTALL
+            )
+            if reflection_code_match:
+                reflected_latex_code = reflection_code_match.group(1).strip()
+                if reflected_latex_code != current_latex:
+                    final_text = reflected_latex_code
+                    cleanup_map = {
+                        "</end": r"\\end",
+                        "</begin": r"\\begin",
+                        "'": "'",
+                    }
+                    for bad_str, repl_str in cleanup_map.items():
+                        final_text = final_text.replace(bad_str, repl_str)
+                    final_text = re.sub(r"(\d+(?:\.\d+)?)%", r"\1\\%", final_text)
+
+                    with open(writeup_file, "w") as fo:
+                        fo.write(final_text)
+
+                    compile_latex(latex_folder, reflection_pdf)
+                else:
+                    print(f"No changes in reflection page step.")
+                    compile_latex(latex_folder, reflection_pdf)
+            else:
+                # No code block found - check if it's just a "no changes" response in different words
+                response_lower = reflection_response.lower()
+                if any(phrase in response_lower for phrase in ["no changes", "already within", "page limit is met", "looks good"]):
+                    print("Model indicated no changes needed (implicit). Using current LaTeX.")
+                    compile_latex(latex_folder, reflection_pdf)
+                else:
+                    print(f"WARNING: No valid LaTeX code block found in final reflection")
+                    print(f"Response length: {len(reflection_response)} chars")
+                    print(f"Response preview: {reflection_response[:500] if len(reflection_response) > 0 else 'Empty'}")
+                    # Fall back to current LaTeX instead of failing
+                    print("Falling back to current LaTeX and continuing...")
+                    compile_latex(latex_folder, reflection_pdf)
 
         pdf_exists = osp.exists(reflection_pdf)
         if not pdf_exists:

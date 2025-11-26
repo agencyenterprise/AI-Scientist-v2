@@ -16,7 +16,9 @@ const CreateHypothesisSchema = z
     idea: z.string().min(10),
     createdBy: z.string().min(1).default("system"),
     enableIdeation: z.boolean().optional().default(false),
-    reflections: z.coerce.number().int().min(1).max(10).default(3)
+    reflections: z.coerce.number().int().min(1).max(10).default(3),
+    /** Optional additional context to be passed to experiment creation and refiner prompts */
+    additionalContext: z.string().optional()
   })
   .refine(
     (data) =>
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
         idea: parsed.data.idea,
         createdAt: now,
         createdBy: parsed.data.createdBy,
+        ...(parsed.data.additionalContext && { additionalContext: parsed.data.additionalContext }),
         ideation: {
           requestId,
           status: "QUEUED" as IdeationStatus,
@@ -130,7 +133,8 @@ export async function POST(req: NextRequest) {
       idea: parsed.data.idea,
       ideaJson,
       createdAt: now,
-      createdBy: parsed.data.createdBy
+      createdBy: parsed.data.createdBy,
+      ...(parsed.data.additionalContext && { additionalContext: parsed.data.additionalContext })
     })
 
     await enqueueRun(hypothesis._id)

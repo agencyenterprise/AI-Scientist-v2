@@ -59,7 +59,7 @@ print("\n✍️  Writing paper...")
 writeup_success = perform_writeup(
     base_folder=experiment_dir,
     big_model=big_model,
-    page_limit=4,
+    page_limit=8,
     citations_text=citations_text
 )
 

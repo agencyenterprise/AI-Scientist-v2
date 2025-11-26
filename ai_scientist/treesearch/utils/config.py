@@ -88,6 +88,7 @@ class WriteupConfig:
     big_model: str
     small_model: str
     plot_model: str
+    page_limit: int = 8  # Max pages for main text (before references)
 
 
 @dataclass
