@@ -286,9 +286,49 @@ class MinimalAgent:
             "bayesian-optimization",
             "timm",
             "albumentations",
+            "transformers",
+            "datasets",
+            "huggingface_hub",
+            "matplotlib",
+            "seaborn",
         ]
         random.shuffle(pkgs)
         pkg_str = ", ".join([f"`{p}`" for p in pkgs])
+
+        # Critical import guidance to avoid common pitfalls - 2025 best practices
+        import_notes = """
+
+**2025 PYTHON ML BEST PRACTICES** (CRITICAL - avoid deprecated patterns):
+
+**Optimizers & Training:**
+  - AdamW: Use `from torch.optim import AdamW` (REMOVED from transformers in 2024)
+  - All optimizers: Import from `torch.optim`, NOT from transformers
+  - Learning rate schedulers: Use `torch.optim.lr_scheduler` or `transformers.get_scheduler()`
+
+**HuggingFace Ecosystem (transformers 4.40+):**
+  - Models: `from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification`
+  - Datasets: `from datasets import load_dataset, Dataset, DatasetDict`
+  - Training: Prefer `transformers.Trainer` with `TrainingArguments` for standard fine-tuning
+  - PEFT/LoRA: `from peft import get_peft_model, LoraConfig, TaskType`
+
+**PyTorch 2.0+ Features (use these!):**
+  - Compile models: `model = torch.compile(model)` for 2x speedup
+  - Use `torch.amp.autocast('cuda')` for mixed precision (replaces deprecated torch.cuda.amp)
+  - Prefer `torch.nn.functional` over deprecated module-level functions
+
+**Common Import Patterns:**
+```python
+import torch
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
+from datasets import load_dataset
+```
+
+**Avoid These Deprecated Patterns:**
+  - ❌ `from transformers import AdamW` → ✅ `from torch.optim import AdamW`
+  - ❌ `torch.cuda.amp.autocast()` → ✅ `torch.amp.autocast('cuda')`
+  - ❌ `model.cuda()` → ✅ `model.to(device)` where `device = torch.device('cuda')`"""
 
         # Add GPU info if available in config
         gpu_info = ""
@@ -311,7 +351,7 @@ class MinimalAgent:
                 compute_notes = f"\n\n**Additional Compute Notes**: {self.cfg.compute.notes}"
 
         env_prompt = {
-            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow.{gpu_info}{compute_notes}"
+            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow.{import_notes}{gpu_info}{compute_notes}"
         }
         return env_prompt
 
