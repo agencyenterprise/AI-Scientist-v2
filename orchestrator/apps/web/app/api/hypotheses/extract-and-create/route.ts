@@ -179,7 +179,8 @@ async function processExtractionInBackground(
       "Risk Factors and Limitations": [
         "Computational complexity",
         "Generalization to other domains"
-      ]
+      ],
+      ...(options.additionalContext && { "Additional Context": options.additionalContext })
     }
 
     const enableIdeation = options.enableIdeation ?? false

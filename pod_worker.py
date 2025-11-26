@@ -918,6 +918,7 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     
     title = hypothesis.get("title", "Research Direction")
     idea_text = hypothesis.get("idea", "")
+    additional_context = hypothesis.get("additionalContext", "")
     defaults = {
         "name": _slugify_name(title, f"idea_{request_id[:8]}"),
         "title": title,
@@ -929,17 +930,21 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     runtime_dir = workspace_root / "ai_scientist" / "ideas" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     
-    workshop_path = runtime_dir / f"{request_id}.md"
-    workshop_path.write_text(
-        f"# {title}\n\n"
-        "## Research Prompt\n"
-        f"{idea_text}\n\n"
+    # Build workshop content, including additional context if provided
+    workshop_content = f"# {title}\n\n## Research Prompt\n{idea_text}\n\n"
+    if additional_context:
+        workshop_content += f"## Additional Context (User Instructions)\n{additional_context}\n\n"
+    workshop_content += (
         "## Guidance\n"
         "Generate a compelling research proposal expanding on the hypothesis above. "
-        "Use the ideation pipeline tools, perform literature search, and return the final idea JSON.\n",
-        encoding="utf-8"
+        "Use the ideation pipeline tools, perform literature search, and return the final idea JSON.\n"
     )
+    
+    workshop_path = runtime_dir / f"{request_id}.md"
+    workshop_path.write_text(workshop_content, encoding="utf-8")
     print(f"[ideation-debug] Workshop file written to {workshop_path}")
+    if additional_context:
+        print(f"[ideation-debug] Additional context included: {additional_context[:100]}...")
     
     max_generations = request.get("maxNumGenerations", 1)
     cmd = [
@@ -1038,7 +1043,12 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
             "updatedAt": completed_at
         }
         if normalized_ideas:
-            hypothesis_updates["ideaJson"] = normalized_ideas[0]
+            # Inject Additional Context into ideaJson if it exists in the hypothesis
+            final_idea_json = normalized_ideas[0].copy()
+            if additional_context:
+                final_idea_json["Additional Context"] = additional_context
+                print(f"[ideation-debug] Injected Additional Context into ideaJson")
+            hypothesis_updates["ideaJson"] = final_idea_json
         
         hypotheses_collection.update_one(
             {"_id": hypothesis_id},

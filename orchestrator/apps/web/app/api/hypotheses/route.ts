@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const ideaJson = await generateIdeaJson(parsed.data.title, parsed.data.idea).catch(() => ({
+    const ideaJson = await generateIdeaJson(parsed.data.title, parsed.data.idea, parsed.data.additionalContext).catch(() => ({
       Name: parsed.data.title.toLowerCase().replace(/\s+/g, "_"),
       Title: parsed.data.title,
       "Short Hypothesis": parsed.data.idea.slice(0, 200),
@@ -124,7 +124,8 @@ export async function POST(req: NextRequest) {
       "Risk Factors and Limitations": [
         "Computational complexity",
         "Generalization to other domains"
-      ]
+      ],
+      ...(parsed.data.additionalContext && { "Additional Context": parsed.data.additionalContext })
     }))
 
     const hypothesis = await createHypothesis({

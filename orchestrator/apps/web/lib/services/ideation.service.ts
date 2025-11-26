@@ -20,9 +20,10 @@ interface IdeaJson {
   Abstract: string
   Experiments: string[]
   "Risk Factors and Limitations": string[]
+  "Additional Context"?: string
 }
 
-export async function generateIdeaJson(title: string, ideaText: string): Promise<IdeaJson> {
+export async function generateIdeaJson(title: string, ideaText: string, additionalContext?: string): Promise<IdeaJson> {
   const env = getEnv()
   
   if (!env.OPENAI_API_KEY) {
@@ -63,7 +64,8 @@ export async function generateIdeaJson(title: string, ideaText: string): Promise
     "Short Hypothesis": ideaJson["Short Hypothesis"] || anyJson["Short hypothesis"] || "",
     Abstract: ideaJson.Abstract || ideaText,
     Experiments: ideaJson.Experiments || [],
-    "Risk Factors and Limitations": ideaJson["Risk Factors and Limitations"] || []
+    "Risk Factors and Limitations": ideaJson["Risk Factors and Limitations"] || [],
+    ...(additionalContext && { "Additional Context": additionalContext })
   }
 }
 

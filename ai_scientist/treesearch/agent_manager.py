@@ -196,6 +196,12 @@ Your research idea:\n\n
         )
         if "Code" in self.task_desc:
             task_desc += "Code To Use:\n" + self.task_desc["Code"] + "\n"
+        if "Additional Context" in self.task_desc and self.task_desc["Additional Context"]:
+            task_desc += (
+                "Additional Context (special instructions, constraints, or background information from the user):\n"
+                + self.task_desc["Additional Context"]
+                + "\n"
+            )
         return task_desc
 
     def _create_initial_stage(self):

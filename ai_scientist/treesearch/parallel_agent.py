@@ -292,20 +292,26 @@ class MinimalAgent:
 
         # Add GPU info if available in config
         gpu_info = ""
-        if hasattr(self.cfg, "compute") and hasattr(self.cfg.compute, "gpu"):
-            gpu_type = self.cfg.compute.gpu.type
-            vram_gb = self.cfg.compute.gpu.vram_gb
-            ram_gb = self.cfg.compute.ram_gb if hasattr(self.cfg.compute, "ram_gb") else "unknown"
-            gpu_info = f"\n\n**Available Hardware**: You have access to ONE {gpu_type} GPU with {vram_gb}GB VRAM and {ram_gb}GB system RAM. This is a powerful setup that can handle:\n" \
-                      f"  - Moderate to large models (~3B parameters for training, ~7B for inference)\n" \
-                      f"  - Fine-tuning pre-trained models (full fine-tuning for smaller models, LoRA/QLoRA for larger ones)\n" \
-                      f"  - Good batch sizes (use batch sizes of 16-64 for training, can go higher for inference)\n" \
-                      f"  - Extensive training (15-20+ epochs is fine)\n" \
-                      f"  - Large datasets with millions of samples - with {ram_gb}GB RAM, you can load most datasets directly into memory\n" \
-                      f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or similar-sized models. For fine-tuning, you can use models from HuggingFace with PEFT/LoRA for larger models to fit in memory. With {ram_gb}GB RAM, you have plenty of memory for large datasets - only use streaming=True for massive datasets (>50GB)."
+        compute_notes = ""
+        if hasattr(self.cfg, "compute") and self.cfg.compute is not None:
+            if hasattr(self.cfg.compute, "gpu") and self.cfg.compute.gpu is not None:
+                gpu_type = self.cfg.compute.gpu.type
+                vram_gb = self.cfg.compute.gpu.vram_gb
+                ram_gb = self.cfg.compute.ram_gb if hasattr(self.cfg.compute, "ram_gb") else "unknown"
+                gpu_info = f"\n\n**Available Hardware**: You have access to ONE {gpu_type} GPU with {vram_gb}GB VRAM and {ram_gb}GB system RAM. This is a powerful setup that can handle:\n" \
+                          f"  - Moderate to large models (~3B parameters for training, ~7B for inference)\n" \
+                          f"  - Fine-tuning pre-trained models (full fine-tuning for smaller models, LoRA/QLoRA for larger ones)\n" \
+                          f"  - Good batch sizes (use batch sizes of 16-64 for training, can go higher for inference)\n" \
+                          f"  - Extensive training (15-20+ epochs is fine)\n" \
+                          f"  - Large datasets with millions of samples - with {ram_gb}GB RAM, you can load most datasets directly into memory\n" \
+                          f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or similar-sized models. For fine-tuning, you can use models from HuggingFace with PEFT/LoRA for larger models to fit in memory. With {ram_gb}GB RAM, you have plenty of memory for large datasets - only use streaming=True for massive datasets (>50GB)."
+            
+            # Add compute notes if provided
+            if hasattr(self.cfg.compute, "notes") and self.cfg.compute.notes:
+                compute_notes = f"\n\n**Additional Compute Notes**: {self.cfg.compute.notes}"
 
         env_prompt = {
-            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow.{gpu_info}"
+            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow.{gpu_info}{compute_notes}"
         }
         return env_prompt
 
