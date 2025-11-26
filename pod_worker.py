@@ -16,6 +16,12 @@ from functools import partial
 from pymongo import MongoClient, ReturnDocument
 from ulid import ULID
 
+# Load .env at module import time to ensure env vars are available
+# This is critical for worker restarts after git auto-pull
+if os.path.exists('.env'):
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+
 from event_emitter import CloudEventEmitter
 
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "https://ai-scientist-v2-production.up.railway.app")
