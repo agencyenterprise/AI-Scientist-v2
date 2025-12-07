@@ -4,17 +4,24 @@ This ensures tests validate the exact same events the worker sends.
 """
 import os
 import requests
+import threading
 from datetime import datetime
 from typing import Dict, Any, Optional
 from ulid import ULID
 
 class CloudEventEmitter:
-    """Emits CloudEvents to the control plane API."""
+    """Emits CloudEvents to the control plane API.
+    
+    Thread-safe: Uses a lock to ensure sequence numbers are assigned and events
+    are sent atomically, preventing out-of-order delivery when multiple threads
+    emit events concurrently.
+    """
     
     def __init__(self, control_plane_url: str, source_id: str):
         self.control_plane_url = control_plane_url
         self.source_id = source_id
         self.seq_counter = 0
+        self._lock = threading.Lock()  # Thread-safety for seq_counter and emission
     
     def set_seq_counter(self, seq: int) -> None:
         """Set the sequence counter to sync with existing run event sequence.
@@ -22,10 +29,11 @@ class CloudEventEmitter:
         This must be called before emitting events for an existing run to ensure
         new events have sequence numbers greater than the run's lastEventSeq.
         """
-        self.seq_counter = seq
+        with self._lock:
+            self.seq_counter = seq
     
     def _create_envelope(self, event_type: str, run_id: str, data: Dict[str, Any]) -> Dict:
-        """Create CloudEvents envelope."""
+        """Create CloudEvents envelope. Must be called while holding _lock."""
         self.seq_counter += 1
         
         return {
@@ -41,24 +49,27 @@ class CloudEventEmitter:
         }
     
     def emit(self, event_type: str, run_id: str, data: Dict[str, Any]) -> bool:
-        """Emit a single event."""
-        envelope = self._create_envelope(event_type, run_id, data)
-        
-        try:
-            response = requests.post(
-                f"{self.control_plane_url}/api/ingest/event",
-                json=envelope,
-                headers={"Content-Type": "application/json"},
-                timeout=10
-            )
-            response.raise_for_status()
-            return True
-        except Exception as e:
-            print(f"Failed to emit {event_type}: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                print(f"  Status: {e.response.status_code}")
-                print(f"  Body: {e.response.text}")
-            return False
+        """Emit a single event. Thread-safe."""
+        # Hold lock during both seq assignment AND request to ensure events
+        # arrive at server in the same order they were assigned seq numbers
+        with self._lock:
+            envelope = self._create_envelope(event_type, run_id, data)
+            
+            try:
+                response = requests.post(
+                    f"{self.control_plane_url}/api/ingest/event",
+                    json=envelope,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
+                response.raise_for_status()
+                return True
+            except Exception as e:
+                print(f"Failed to emit {event_type}: {e}")
+                if hasattr(e, 'response') and e.response is not None:
+                    print(f"  Status: {e.response.status_code}")
+                    print(f"  Body: {e.response.text}")
+                return False
     
     # Run Lifecycle Events
     def run_started(self, run_id: str, pod_id: str, gpu: str, region: str) -> bool:

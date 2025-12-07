@@ -16,11 +16,34 @@ from . import tree_export
 from . import copytree, preproc_data, serialize
 
 shutup.mute_warnings()
+
+# Set up base logging with RichHandler for console output
 logging.basicConfig(
     level="WARNING", format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
 )
 logger = logging.getLogger("ai-scientist")
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)  # Changed to INFO to capture more details
+
+
+def setup_file_logging(log_dir: Path):
+    """Add a file handler to capture all logs to a unified log file."""
+    log_file = log_dir / "experiment.log"
+    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)  # Capture everything
+    file_formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(file_formatter)
+    
+    # Add to root logger so all loggers write to this file
+    logging.getLogger().addHandler(file_handler)
+    
+    # Also add to our specific logger
+    logger.addHandler(file_handler)
+    logger.info(f"Logging to file: {log_file}")
+    
+    return log_file
 
 
 """ these dataclasses are just for type hinting, the actual config is in config.yaml """
@@ -188,6 +211,10 @@ def prep_cfg(cfg: Config):
 
     cfg.log_dir = (top_log_dir / cfg.exp_name).resolve()
     cfg.workspace_dir = (top_workspace_dir / cfg.exp_name).resolve()
+    
+    # Create log directory and set up file logging
+    cfg.log_dir.mkdir(parents=True, exist_ok=True)
+    setup_file_logging(cfg.log_dir)
 
     # validate the config
     cfg_schema: Config = OmegaConf.structured(Config)

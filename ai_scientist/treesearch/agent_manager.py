@@ -149,9 +149,11 @@ class AgentManager:
         }
         self.main_stage_goals: Dict[int, str] = {
             1: """
-                - Focus on getting basic working implementation
-                - Use a dataset appropriate to the experiment
-                - Aim for basic functional correctness
+                - Implement the CORE experimental setup that can actually test the hypothesis
+                - Match the ambition level of the hypothesis - if it mentions neural networks, use neural networks; if it mentions LLMs, use real LLMs
+                - Don't oversimplify: prioritize scientific validity over implementation simplicity
+                - Use the full hardware available (RTX 4090 with 24GB VRAM) - don't limit yourself to tiny models
+                - Use a dataset appropriate to the experiment (real datasets from HuggingFace when suitable)
                 - If you are given \"Code To Use\", you can directly use it as a starting point.""",
             2: """
                 - Change hyperparameters such as learning rate, number of epochs, batch size, etc. to improve the performance
@@ -223,26 +225,44 @@ Your research idea:\n\n
     def _curate_task_desc(self, stage: Stage) -> str:
         task_desc = self._get_task_desc_str()
 
-        if stage.name.startswith("3_"):
-            if isinstance(self.task_desc["Experiments"], list):
-                if isinstance(self.task_desc["Experiments"][0], str):
-                    experiment_str = "\n".join(self.task_desc["Experiments"])
-                elif isinstance(self.task_desc["Experiments"][0], dict):
-                    experiment_str = "\n".join(
-                        [
-                            f"{k}: {v}"
-                            for d in self.task_desc["Experiments"]
-                            for k, v in d.items()
-                        ]
-                    )
-            elif isinstance(self.task_desc["Experiments"], str):
-                experiment_str = self.task_desc["Experiments"]
+        # Always include experiment plan context - the agent needs to know the full scope
+        experiments = self.task_desc.get("Experiments", [])
+        if not experiments:
+            logger.warning("⚠️ No experiments found in task_desc! The agent won't see the experiment plan.")
+            print("[yellow]⚠️ WARNING: No experiments in ideaJson - agent may create oversimplified implementation![/yellow]")
+        
+        if experiments:
+            if isinstance(experiments, list):
+                if len(experiments) > 0 and isinstance(experiments[0], str):
+                    experiment_list = experiments
+                elif len(experiments) > 0 and isinstance(experiments[0], dict):
+                    experiment_list = [
+                        f"{k}: {v}"
+                        for d in experiments
+                        for k, v in d.items()
+                    ]
+                else:
+                    experiment_list = [str(e) for e in experiments]
+            elif isinstance(experiments, str):
+                experiment_list = [experiments]
             else:
-                raise ValueError(
-                    f"Experiments is not a list or string: {self.task_desc['Experiments']}"
-                )
-            task_desc += "Experiment Plan: " + experiment_str + "\n"
-        elif stage.name.startswith("4_"):
+                experiment_list = []
+
+            if experiment_list:
+                if stage.name.startswith("1_") or stage.name.startswith("2_"):
+                    # Show full experiment scope early so the agent doesn't undersell
+                    task_desc += "\n*** FULL EXPERIMENT PLAN (implement the core of this - don't oversimplify!) ***\n"
+                    # Show first 3 experiments to give context without overwhelming
+                    for i, exp in enumerate(experiment_list[:3], 1):
+                        task_desc += f"\nExperiment {i}:\n{exp}\n"
+                    if len(experiment_list) > 3:
+                        task_desc += f"\n... and {len(experiment_list) - 3} more experiments in later stages.\n"
+                    task_desc += "\n*** Your implementation should be sophisticated enough to support these experiments! ***\n\n"
+                elif stage.name.startswith("3_"):
+                    # Stage 3 gets the full list
+                    task_desc += "Experiment Plan: " + "\n".join(experiment_list) + "\n"
+
+        if stage.name.startswith("4_"):
             if isinstance(self.task_desc["Risk Factors and Limitations"], list):
                 risk_factors_str = "\n".join(
                     self.task_desc["Risk Factors and Limitations"]

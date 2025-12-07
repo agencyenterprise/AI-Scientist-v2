@@ -372,6 +372,17 @@ from datasets import load_dataset
             "CRITICAL MODEL INPUT GUIDELINES:",
             "  - Always pay extra attention to the input to the model being properly normalized",
             "  - This is extremely important because the input to the model's forward pass directly affects the output, and the loss function is computed based on the output",
+            "",
+            "*** AMBITION GUIDANCE - PUSH THE LIMITS ***",
+            "  - Your implementation should MATCH the ambition of the hypothesis",
+            "  - If the hypothesis mentions neural networks, implement neural networks - not toy numerical simulations",
+            "  - If the hypothesis mentions LLMs or language models, use real LLMs (even small ones like GPT-2)",
+            "  - If the hypothesis mentions RNNs/transformers/attention, implement them properly",
+            "  - Don't substitute hand-designed dynamics for what should be learned representations",
+            "  - Use the full hardware available: RTX 4090 with 24GB VRAM can handle gpt2-large, 3B parameter models for inference",
+            "  - Don't default to distilgpt2 (82M) when you can use gpt2-medium (355M) or gpt2-large (774M)",
+            "  - Aim for a paper-worthy experiment, not a homework assignment",
+            "",
         ]
         if hasattr(self.cfg.experiment, "num_syn_datasets"):
             num_syn_datasets = self.cfg.experiment.num_syn_datasets
@@ -407,6 +418,11 @@ from datasets import load_dataset
                 "Your response should only contain a single code block.",
                 f"Be aware of the running time of the code, it should complete within {humanize.naturaldelta(self.cfg.exec.timeout)}.",
                 'You can also use the "./working" directory to store any temporary files that your code needs to create.',
+                "",
+                "*** CRITICAL: DATA SAVING IS MANDATORY ***",
+                "Your code MUST save experiment data as a numpy file. Without this, the paper will have NO figures!",
+                "At the END of your code, you MUST include: np.save(os.path.join(working_dir, 'experiment_data.npy'), experiment_data)",
+                "",
                 "Data saving requirements:",
                 "- Save all plottable data (metrics, losses, predictions, etc.) as numpy arrays using np.save()",
                 "- Use the following naming convention for saved files:",
@@ -516,11 +532,13 @@ from datasets import load_dataset
     def _draft(self) -> Node:
         prompt: Any = {
             "Introduction": (
-                "You are an AI researcher who is looking to publish a paper that will contribute significantly to the field."
-                "Your first task is to write a python code to implement a solid baseline based on your research idea provided below, "
+                "You are an ambitious AI researcher who is looking to publish a paper that will contribute significantly to the field. "
+                "Your first task is to write python code to implement the CORE experimental setup based on your research idea below, "
                 "from data preparation to model training, as well as evaluation and visualization. "
-                "Focus on getting a simple but working implementation first, before any sophisticated improvements. "
-                "We will explore more advanced variations in later stages."
+                "CRITICAL: Your implementation must MATCH the ambition level of the hypothesis. "
+                "If the hypothesis involves neural networks, implement neural networks. If it involves LLMs, use real LLMs (even small ones). "
+                "Do NOT substitute toy numerical simulations for what should be proper ML experiments. "
+                "You have access to an RTX 4090 with 24GB VRAM - use it!"
             ),
             "Research idea": self.task_desc,
             "Memory": self.memory_summary if self.memory_summary else "",
@@ -529,11 +547,15 @@ from datasets import load_dataset
         prompt["Instructions"] |= self._prompt_resp_fmt
         prompt["Instructions"] |= {
             "Experiment design sketch guideline": [
-                "This first experiment design should be relatively simple, without extensive hyper-parameter optimization.",
-                "Take the Memory section into consideration when proposing the design. ",
-                "The solution sketch should be 6-10 sentences. ",
+                "*** MATCH THE HYPOTHESIS AMBITION - Don't oversimplify! ***",
+                "Your implementation should be sophisticated enough to actually test the hypothesis properly.",
+                "If the hypothesis mentions neural networks, RNNs, transformers, or LLMs - USE THEM. Don't substitute toy simulations.",
+                "Prioritize scientific validity over implementation simplicity.",
+                "Take the Memory section into consideration when proposing the design.",
+                "The solution sketch should be 6-10 sentences.",
                 "Don't suggest to do EDA.",
                 "Prioritize using real public datasets (e.g., from HuggingFace) when they suit the task, and only fall back to synthetic data if no suitable dataset is available or synthetic generation is essential to the proposed experiment.",
+                "You have powerful hardware (RTX 4090, 24GB VRAM) - don't limit yourself to distilgpt2 or tiny models. Use gpt2-medium, gpt2-large, or similar.",
                 "",
             ],
             "Evaluation Metric(s)": self.evaluation_metrics,
@@ -1655,6 +1677,10 @@ class ParallelAgent:
                 logger.warning(
                     "No .npy files found in working directory. Data may not have been saved properly."
                 )
+                emit("ai.run.log", {
+                    "message": "⚠️ WARNING: No .npy data files saved! The generated paper will have no experimental plots.",
+                    "level": "warn"
+                })
             else:
                 if seed_eval:
                     # Use the parent node's parse code to parse the same data files again
