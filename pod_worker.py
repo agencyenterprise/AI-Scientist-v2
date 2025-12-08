@@ -1376,12 +1376,25 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             
             event_emitter.log(run_id, f"Starting writeup generation using model: {big_model} ({page_limit} pages max)", "info", "Stage_3")
             
-            writeup_success = perform_writeup(
-                base_folder=idea_dir,
-                big_model=big_model,
-                page_limit=page_limit,
-                citations_text=citations_text
-            )
+            try:
+                writeup_success = perform_writeup(
+                    base_folder=idea_dir,
+                    big_model=big_model,
+                    page_limit=page_limit,
+                    citations_text=citations_text
+                )
+            except Exception as writeup_error:
+                print(f"❌ CRITICAL: perform_writeup raised exception: {writeup_error}")
+                event_emitter.log(run_id, f"❌ CRITICAL: Writeup exception: {str(writeup_error)[:200]}", "error", "Stage_3")
+                traceback.print_exc()
+                writeup_success = False
+
+            # DIAGNOSTIC: Log writeup result explicitly
+            print(f"\n{'='*60}")
+            print(f"📊 DIAGNOSTIC: writeup_success = {writeup_success}")
+            event_emitter.log(run_id, f"📊 DIAGNOSTIC: writeup_success = {writeup_success}", "info", "Stage_3")
+            emitter.flush()  # Force flush to ensure this log is sent
+            print(f"{'='*60}\n")
 
             ensure_run_not_canceled(db, run_id)
             
@@ -1394,9 +1407,21 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             if writeup_success:
                 event_emitter.log(run_id, "Writeup generation succeeded", "info", "Stage_3")
                 print(f"\n📑 Looking for PDF files in {idea_dir}...")
-                all_files = os.listdir(idea_dir)
-                pdf_files = [f for f in all_files if f.endswith(".pdf")]
-                print(f"   Found {len(pdf_files)} PDF file(s): {pdf_files}")
+                event_emitter.log(run_id, f"📑 Scanning for PDFs in: {idea_dir}", "info", "Stage_3")
+                emitter.flush()
+                
+                try:
+                    all_files = os.listdir(idea_dir)
+                    pdf_files = [f for f in all_files if f.endswith(".pdf")]
+                    print(f"   Found {len(pdf_files)} PDF file(s): {pdf_files}")
+                    event_emitter.log(run_id, f"📑 Found {len(pdf_files)} PDFs: {pdf_files}", "info", "Stage_3")
+                    emitter.flush()
+                except Exception as scan_error:
+                    print(f"❌ CRITICAL: Failed to scan for PDFs: {scan_error}")
+                    event_emitter.log(run_id, f"❌ CRITICAL: PDF scan failed: {str(scan_error)[:200]}", "error", "Stage_3")
+                    traceback.print_exc()
+                    emitter.flush()
+                    pdf_files = []
                 
                 if pdf_files:
                     # Upload ALL PDFs (reflections and final paper)
@@ -1409,57 +1434,68 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                     has_named_final = any("final" in name.lower() for name in pdf_files)
                     
                     for pdf_file in pdf_files:
-                        pdf_path = os.path.join(idea_dir, pdf_file)
-                        
-                        # Get PDF file size
-                        ensure_run_not_canceled(db, run_id)
-                        pdf_size_bytes = os.path.getsize(pdf_path)
-                        pdf_size_mb = pdf_size_bytes / (1024 * 1024)
-                        
-                        # Determine artifact kind and whether this is the final paper
-                        name_lower = pdf_file.lower()
-                        is_final = ("final" in name_lower) or (
-                            not has_named_final and pdf_file == f"{base_name}.pdf"
-                        )
-                        if "reflection" in name_lower and not is_final:
-                            kind = "reflection"
-                        else:
-                            kind = "paper"
-                        
-                        event_emitter.log(run_id, f"Generated PDF: {pdf_file} ({pdf_size_mb:.2f} MB)", "info", "Stage_3")
-                        
-                        # Create local backup with shorter filename to avoid filesystem limits (255 chars)
-                        # Use hash of original filename to keep it short while unique
-                        import hashlib
-                        file_hash = hashlib.md5(pdf_file.encode()).hexdigest()[:8]
-                        # Extract just the suffix if present (e.g., "reflection_final_page_limit")
-                        if pdf_file != f"{base_name}.pdf":
-                            # Get suffix after base_name
-                            suffix = pdf_file.replace(f"{base_name}", "").replace(".pdf", "")
-                            backup_filename = f"{run_id}_{file_hash}{suffix}.pdf"
-                        else:
-                            backup_filename = f"{run_id}_paper.pdf"
-                        backup_path = backup_dir / backup_filename
-                        
-                        print(f"   💾 Saving local backup: {backup_path}")
-                        shutil.copy2(pdf_path, backup_path)
-                        print(f"   ✓ Local backup saved")
-                        event_emitter.log(run_id, f"Local backup saved: {backup_path}", "info", "Stage_3")
-                        
-                        print(f"   Uploading {kind}: {pdf_file}")
-                        event_emitter.log(run_id, f"Uploading {kind} to artifact storage", "info", "Stage_3")
-                        upload_result = upload_artifact(run_id, pdf_path, kind)
-                        
-                        if upload_result:
-                            if is_final:
-                                event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_file}")
-                            event_emitter.log(run_id, f"{kind.capitalize()} uploaded successfully: {pdf_file}", "info", "Stage_3")
-                        else:
-                            print(f"⚠️ {kind.capitalize()} upload failed but local backup exists at {backup_path}")
-                            event_emitter.log(run_id, f"{kind.capitalize()} upload failed, but backup exists at {backup_path}", "warning", "Stage_3")
+                        try:
+                            pdf_path = os.path.join(idea_dir, pdf_file)
+                            
+                            # Get PDF file size
+                            ensure_run_not_canceled(db, run_id)
+                            pdf_size_bytes = os.path.getsize(pdf_path)
+                            pdf_size_mb = pdf_size_bytes / (1024 * 1024)
+                            
+                            # Determine artifact kind and whether this is the final paper
+                            name_lower = pdf_file.lower()
+                            is_final = ("final" in name_lower) or (
+                                not has_named_final and pdf_file == f"{base_name}.pdf"
+                            )
+                            if "reflection" in name_lower and not is_final:
+                                kind = "reflection"
+                            else:
+                                kind = "paper"
+                            
+                            event_emitter.log(run_id, f"Generated PDF: {pdf_file} ({pdf_size_mb:.2f} MB)", "info", "Stage_3")
+                            
+                            # Create local backup with shorter filename to avoid filesystem limits (255 chars)
+                            # Use hash of original filename to keep it short while unique
+                            import hashlib
+                            file_hash = hashlib.md5(pdf_file.encode()).hexdigest()[:8]
+                            # Extract just the suffix if present (e.g., "reflection_final_page_limit")
+                            if pdf_file != f"{base_name}.pdf":
+                                # Get suffix after base_name
+                                suffix = pdf_file.replace(f"{base_name}", "").replace(".pdf", "")
+                                backup_filename = f"{run_id}_{file_hash}{suffix}.pdf"
+                            else:
+                                backup_filename = f"{run_id}_paper.pdf"
+                            backup_path = backup_dir / backup_filename
+                            
+                            print(f"   💾 Saving local backup: {backup_path}")
+                            shutil.copy2(pdf_path, backup_path)
+                            print(f"   ✓ Local backup saved")
+                            event_emitter.log(run_id, f"Local backup saved: {backup_path}", "info", "Stage_3")
+                            emitter.flush()
+                            
+                            print(f"   📤 Uploading {kind}: {pdf_file}")
+                            event_emitter.log(run_id, f"📤 Uploading {kind} to artifact storage: {pdf_file}", "info", "Stage_3")
+                            emitter.flush()
+                            
+                            upload_result = upload_artifact(run_id, pdf_path, kind)
+                            
+                            if upload_result:
+                                if is_final:
+                                    event_emitter.paper_generated(run_id, f"runs/{run_id}/{pdf_file}")
+                                event_emitter.log(run_id, f"✅ {kind.capitalize()} uploaded successfully: {pdf_file}", "info", "Stage_3")
+                            else:
+                                print(f"⚠️ {kind.capitalize()} upload failed but local backup exists at {backup_path}")
+                                event_emitter.log(run_id, f"⚠️ {kind.capitalize()} upload failed, but backup exists at {backup_path}", "warning", "Stage_3")
+                            emitter.flush()
+                        except Exception as pdf_error:
+                            print(f"❌ CRITICAL: PDF processing failed for {pdf_file}: {pdf_error}")
+                            event_emitter.log(run_id, f"❌ CRITICAL: PDF processing failed for {pdf_file}: {str(pdf_error)[:150]}", "error", "Stage_3")
+                            traceback.print_exc()
+                            emitter.flush()
                 else:
                     print(f"⚠️ No PDF files found in {idea_dir} after successful writeup!")
                     event_emitter.log(run_id, "No PDF found after writeup", "error", "Stage_3")
+                    emitter.flush()
             else:
                 print(f"⚠️ Writeup did not succeed, skipping PDF upload")
                 event_emitter.log(run_id, "Writeup generation failed - run will be marked as failed", "error", "Stage_3")
@@ -1665,10 +1701,20 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         
         # Copy best solutions to experiment root for easy access
         print("\n📋 Copying best solutions to experiment root...")
-        copy_best_solutions_to_root(idea_dir)
+        event_emitter.log(run_id, "📋 Copying best solutions to experiment root...", "info", "completion")
+        emitter.flush()
+        
+        try:
+            copy_best_solutions_to_root(idea_dir)
+        except Exception as copy_error:
+            print(f"⚠️ Failed to copy best solutions: {copy_error}")
+            event_emitter.log(run_id, f"⚠️ Failed to copy best solutions: {str(copy_error)[:100]}", "warning", "completion")
+            traceback.print_exc()
         
         # Upload best code files as artifacts
         print(f"\n📦 Uploading best code artifacts...")
+        event_emitter.log(run_id, "📦 Starting best code artifacts upload...", "info", "completion")
+        emitter.flush()
         code_files_uploaded = 0
         for stage_num in range(1, 5):  # Stages 1-4
             code_file = f"best_code_stage_{stage_num}.py"
@@ -1707,11 +1753,15 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 print(f"   ⚠️ Failed to upload README")
         
         print("\n📦 Archiving experiment artifacts to MinIO...")
+        event_emitter.log(run_id, "📦 Starting experiment archive upload to MinIO...", "info", "completion")
+        emitter.flush()
+        
         archive_uploaded = False
         try:
             import tarfile
             import tempfile
             
+            print("   Creating archive...")
             with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
                 archive_path = tmp.name
             
@@ -1720,11 +1770,17 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 if os.path.exists('ai_scientist/ideas'):
                     tar.add('ai_scientist/ideas', arcname='ideas')
             
+            archive_size = os.path.getsize(archive_path) / (1024 * 1024)
+            print(f"   Archive created: {archive_size:.2f} MB")
+            event_emitter.log(run_id, f"📦 Archive created: {archive_size:.2f} MB, uploading...", "info", "completion")
+            emitter.flush()
+            
             archive_uploaded = upload_artifact(run_id, archive_path, "archive")
             os.unlink(archive_path)
             
             if archive_uploaded:
                 print(f"✓ Archived experiment to MinIO")
+                event_emitter.log(run_id, "✅ Archive uploaded successfully to MinIO", "info", "completion")
                 print(f"🧹 Cleaning up local experiment directory...")
                 import shutil
                 shutil.rmtree(idea_dir, ignore_errors=True)
@@ -1732,15 +1788,35 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             else:
                 print(f"⚠️ Archive upload failed - keeping local experiment directory: {idea_dir}")
                 print(f"   You can manually clean up later or retry the archive upload")
+                event_emitter.log(run_id, f"⚠️ Archive upload failed, keeping local: {idea_dir}", "warning", "completion")
+            emitter.flush()
             
         except Exception as e:
             print(f"⚠️ Archive/cleanup failed: {e}")
             print(f"   Keeping local experiment directory: {idea_dir}")
+            event_emitter.log(run_id, f"❌ Archive/cleanup exception: {str(e)[:150]}", "error", "completion")
             traceback.print_exc()
+            emitter.flush()
         
         print(f"\n{'='*60}")
         print(f"✅ Experiment completed successfully: {run_id}")
-        print(f"{'='*60}\n")
+        print(f"{'='*60}")
+        
+        # DIAGNOSTIC: Final summary of what was uploaded
+        print(f"\n📊 FINAL UPLOAD SUMMARY:")
+        event_emitter.log(run_id, "📊 FINAL UPLOAD SUMMARY - checking what was uploaded", "info", "completion")
+        emitter.flush()
+        
+        summary_items = []
+        summary_items.append(f"Archive uploaded: {archive_uploaded}")
+        summary_items.append(f"Code files uploaded: {code_files_uploaded}")
+        
+        for item in summary_items:
+            print(f"   • {item}")
+            
+        event_emitter.log(run_id, f"📊 Summary: archive={archive_uploaded}, code_files={code_files_uploaded}", "info", "completion")
+        emitter.flush()
+        print()
         
     except RunCanceledException as e:
         print(f"\n⚠️ Experiment canceled: {e}")
