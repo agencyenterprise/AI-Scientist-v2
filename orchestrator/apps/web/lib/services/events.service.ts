@@ -351,6 +351,8 @@ async function handleArtifactRegistered(
     uri: data.key,
     contentType: data.content_type,
     size: data.bytes,
+    kind: data.kind,  // Include artifact kind (paper, archive, code, plot, etc.)
+    sha256: data.sha256,  // Include checksum for integrity
     createdAt: new Date(event.time)
   })
 }
