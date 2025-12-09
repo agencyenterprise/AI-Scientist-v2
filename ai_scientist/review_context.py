@@ -120,8 +120,16 @@ def build_auto_review_context(
     idea_dir: str,
     idea_json: Optional[Dict[str, Any]],
     paper_content: str,
+    chat_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     context: Dict[str, Any] = {}
+    
+    # Include original ChatGPT conversation context for alignment review
+    if chat_context:
+        from ai_scientist.chat_context import format_chat_for_paper_review
+        formatted_chat = format_chat_for_paper_review(chat_context)
+        if formatted_chat:
+            context["original_experiment_context"] = formatted_chat
 
     idea_payload = _load_idea_payload(idea_dir, idea_json)
     if isinstance(idea_payload, dict):

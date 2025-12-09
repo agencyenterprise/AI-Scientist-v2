@@ -204,6 +204,14 @@ Your research idea:\n\n
                 + self.task_desc["Additional Context"]
                 + "\n"
             )
+        
+        # Include original ChatGPT conversation context if available
+        if "ChatContext" in self.task_desc and self.task_desc["ChatContext"]:
+            from ai_scientist.chat_context import format_chat_for_code_generation
+            chat_context = format_chat_for_code_generation(self.task_desc["ChatContext"])
+            if chat_context:
+                task_desc += "\n" + chat_context + "\n"
+        
         return task_desc
 
     def _create_initial_stage(self):
@@ -345,6 +353,9 @@ Your research idea:\n\n
             best_stage2_node = None
             best_stage1_node = None
 
+        # Get raw chat context for context-aware reviews (separate from formatted task_desc)
+        chat_context = self.task_desc.get("ChatContext")
+        
         return ParallelAgent(
             task_desc=task_desc,
             cfg=stage_cfg,
@@ -354,6 +365,7 @@ Your research idea:\n\n
             best_stage2_node=best_stage2_node,
             best_stage1_node=best_stage1_node,
             event_callback=self.event_callback,
+            chat_context=chat_context,
         )
 
     def _parse_vlm_feedback(self, node: Node) -> str:

@@ -1156,6 +1156,16 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             print(f"❌ {error_msg}")
             raise ValueError(error_msg)
         
+        # Extract ChatGPT conversation context for context-aware reviews
+        # This is stored separately from ideaJson for the final paper review
+        chat_context = hypothesis.get("extractedRawText")
+        if chat_context:
+            print(f"📝 Found ChatGPT conversation context ({len(chat_context)} chars)")
+            # Add to ideaJson so it flows through to the experiment agent
+            idea_json["ChatContext"] = chat_context
+        else:
+            print("📝 No ChatGPT conversation context available")
+        
         idea_name = idea_json.get("Name", "experiment")
         retry_count = run.get("retryCount", 0)
         
@@ -1571,7 +1581,9 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                 )
                 
                 ensure_run_not_canceled(db, run_id)
-                review_context = build_auto_review_context(idea_dir, idea_json, paper_content or "")
+                review_context = build_auto_review_context(
+                    idea_dir, idea_json, paper_content or "", chat_context=chat_context
+                )
                 event_emitter.log(
                     run_id,
                     f"Constructed review context keys: {list(review_context.keys())}",

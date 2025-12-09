@@ -12,10 +12,10 @@ const DASHBOARD_STATUSES: RunStatus[] = [
   "FAILED"
 ]
 
-// In-memory cache for last stale run check
+// In-memory cache for last stale run check (for logging purposes only)
 let lastStaleRunCheck = 0
 const STALE_CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
-const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes without heartbeat = dead
+const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes without heartbeat = potentially stale
 
 async function checkForStaleRuns() {
   const now = Date.now()
@@ -40,25 +40,16 @@ async function checkForStaleRuns() {
       ]
     }).toArray()
     
+    // NOTE: We intentionally do NOT mark stale runs as FAILED here.
+    // Runs should only be marked as FAILED when the worker explicitly sends
+    // a run.failed event. Missing heartbeats could be due to network issues,
+    // slow processing, or other transient problems - not actual failures.
     if (staleRuns.length > 0) {
-      console.log(`⚠️ Found ${staleRuns.length} stale run(s) - marking as FAILED`)
-      
-      // Mark all stale runs as FAILED
-      const result = await db.collection("runs").updateMany(
-        {
-          _id: { $in: staleRuns.map(r => r._id) },
-          status: "RUNNING" // Double-check they're still RUNNING
-        },
-        {
-          $set: {
-            status: "FAILED",
-            failedAt: new Date(),
-            failureReason: "Worker heartbeat timeout (no heartbeat received in 5 minutes)"
-          }
-        }
-      )
-      
-      console.log(`✓ Marked ${result.modifiedCount} stale run(s) as FAILED`)
+      console.log(`⚠️ Found ${staleRuns.length} run(s) with stale heartbeats (informational only, not marking as failed)`)
+      for (const run of staleRuns) {
+        const lastHb = run.lastHeartbeat ? new Date(run.lastHeartbeat).toISOString() : 'never'
+        console.log(`   - Run ${run._id}: last heartbeat ${lastHb}`)
+      }
     }
     
     lastStaleRunCheck = now

@@ -192,6 +192,10 @@ aisci_outputs/
 slurm_logs/
 .out
 
+# Temp experiment directories and archives
+tmp*/
+*.tar.gz
+
 # final papers
 final_papers/
 

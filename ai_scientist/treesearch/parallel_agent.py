@@ -263,6 +263,7 @@ class MinimalAgent:
         evaluation_metrics=None,
         stage=None,
         stage_name=None,
+        chat_context=None,
     ):
         self.task_desc = task_desc
         self.memory_summary = memory_summary
@@ -270,6 +271,7 @@ class MinimalAgent:
         self.evaluation_metrics = evaluation_metrics
         self.stage_name = stage_name
         self.data_preview = None
+        self.chat_context = chat_context  # Raw ChatGPT conversation for context-aware reviews
 
     @property
     def _prompt_environment(self):
@@ -782,6 +784,13 @@ from datasets import load_dataset
             "Implementation": wrap_code(node.code),
             "Execution output": wrap_code(node.term_out, lang=""),
         }
+        
+        # Include original ChatGPT conversation context for alignment review
+        if self.chat_context:
+            from ai_scientist.chat_context import format_chat_for_node_review
+            formatted_chat = format_chat_for_node_review(self.chat_context)
+            if formatted_chat:
+                prompt["Original Experiment Context"] = formatted_chat
 
         response = cast(
             dict,
@@ -1235,6 +1244,7 @@ class ParallelAgent:
         best_stage2_node=None,
         best_stage1_node=None,
         event_callback=None,
+        chat_context=None,
     ):
         super().__init__()
         self.task_desc = task_desc
@@ -1242,6 +1252,7 @@ class ParallelAgent:
         self.journal = journal
         self.stage_name = stage_name
         self.event_callback = event_callback
+        self.chat_context = chat_context  # Raw ChatGPT conversation for context-aware reviews
         self.best_stage3_node = (
             best_stage3_node  # to initialize ablation stuides (stage 4)
         )
@@ -1422,6 +1433,7 @@ class ParallelAgent:
                     best_stage3_plot_code,
                     seed_eval,
                     None,
+                    self.chat_context,
                 )
             )
 
@@ -1540,6 +1552,7 @@ class ParallelAgent:
         best_stage1_plot_code=None,
         seed_eval=False,
         event_callback=None,
+        chat_context=None,
     ):
         """Wrapper function that creates a fresh environment for each process"""
         from .interpreter import Interpreter
@@ -1581,6 +1594,7 @@ class ParallelAgent:
             memory_summary=memory_summary,
             evaluation_metrics=evaluation_metrics,
             stage_name=stage_name,
+            chat_context=chat_context,
         )
 
         # Create interpreter instance for worker process
@@ -2346,6 +2360,7 @@ class ParallelAgent:
                     best_stage3_plot_code,
                     seed_eval,
                     None,
+                    self.chat_context,
                 )
             )
 

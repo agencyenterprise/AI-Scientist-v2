@@ -113,6 +113,11 @@ def _render_context_block(context: Optional[Dict[str, Any]]) -> str:
         return ""
 
     blocks: list[str] = []
+    
+    # Include original ChatGPT conversation context first (most important for alignment)
+    experiment_context = context.get("original_experiment_context")
+    if experiment_context:
+        blocks.append(experiment_context)
 
     overview = context.get("idea_overview")
     if isinstance(overview, dict):
