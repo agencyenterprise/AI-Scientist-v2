@@ -693,47 +693,70 @@ def get_gpu_info() -> Dict[str, Any]:
     return {"gpu_name": "unknown", "gpu_count": 0, "region": "unknown"}
 
 
-def upload_artifact(run_id: str, file_path: str, kind: str) -> bool:
-    try:
-        filename = os.path.basename(file_path)
-        content_type = get_content_type(filename)
-        
-        print(f"📤 Uploading artifact: {filename} ({kind})")
-        
-        resp = requests.post(
-            f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
-            json={"action": "put", "filename": filename, "content_type": content_type},
-            timeout=30
-        )
-        resp.raise_for_status()
-        presigned_url = resp.json()["url"]
-        
-        with open(file_path, "rb") as f:
-            file_bytes = f.read()
-        
-        print(f"   Uploading {len(file_bytes)} bytes to MinIO...")
-        resp = requests.put(presigned_url, data=file_bytes, timeout=300)
-        resp.raise_for_status()
-        
-        sha256 = hashlib.sha256(file_bytes).hexdigest()
-        
-        print(f"   Registering artifact in database...")
-        event_emitter.artifact_registered(
-            run_id,
-            f"runs/{run_id}/{filename}",
-            len(file_bytes),
-            sha256,
-            content_type,
-            kind
-        )
-        
-        print(f"✓ Artifact uploaded successfully: {filename}")
-        return True
-    except Exception as e:
-        # Artifact failed event
-        print(f"❌ Artifact upload failed: {e}")
-        traceback.print_exc()
-        return False
+def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3) -> bool:
+    """Upload artifact with retry logic for transient failures (502, 503, etc.)"""
+    filename = os.path.basename(file_path)
+    content_type = get_content_type(filename)
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                # Exponential backoff: 2s, 4s, 8s...
+                wait_time = 2 ** attempt
+                print(f"   ⏳ Retry {attempt}/{max_retries-1} after {wait_time}s...")
+                time.sleep(wait_time)
+            
+            print(f"📤 Uploading artifact: {filename} ({kind})")
+            
+            resp = requests.post(
+                f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
+                json={"action": "put", "filename": filename, "content_type": content_type},
+                timeout=30
+            )
+            resp.raise_for_status()
+            presigned_url = resp.json()["url"]
+            
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+            
+            print(f"   Uploading {len(file_bytes)} bytes to MinIO...")
+            resp = requests.put(presigned_url, data=file_bytes, timeout=300)
+            resp.raise_for_status()
+            
+            sha256 = hashlib.sha256(file_bytes).hexdigest()
+            
+            print(f"   Registering artifact in database...")
+            event_emitter.artifact_registered(
+                run_id,
+                f"runs/{run_id}/{filename}",
+                len(file_bytes),
+                sha256,
+                content_type,
+                kind
+            )
+            
+            print(f"✓ Artifact uploaded successfully: {filename}")
+            return True
+            
+        except requests.exceptions.HTTPError as e:
+            # Retry on 502, 503, 504 (transient server errors)
+            if e.response is not None and e.response.status_code in (502, 503, 504):
+                print(f"   ⚠️ Got {e.response.status_code}, will retry...")
+                if attempt == max_retries - 1:
+                    print(f"❌ Artifact upload failed after {max_retries} attempts: {e}")
+                    traceback.print_exc()
+                    return False
+                continue
+            # Non-retryable HTTP error
+            print(f"❌ Artifact upload failed: {e}")
+            traceback.print_exc()
+            return False
+        except Exception as e:
+            print(f"❌ Artifact upload failed: {e}")
+            traceback.print_exc()
+            return False
+    
+    return False
 
 
 def get_content_type(filename: str) -> str:
