@@ -82,6 +82,14 @@ class RedirectQueue:
 
     def flush(self):
         pass
+    
+    def isatty(self):
+        """Required by torch.compile/TorchDynamo to check if stdout is a TTY."""
+        return False
+    
+    def fileno(self):
+        """Return a fake file descriptor. Some libraries check for this."""
+        return -1
 
 
 class Interpreter:
