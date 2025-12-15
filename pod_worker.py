@@ -1607,6 +1607,36 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
                             event_emitter.log(run_id, f"Local backup saved: {backup_path}", "info", "Stage_3")
                             emitter.flush()
                             
+                            # CRITICAL: Save PDF as base64 in MongoDB for redundancy
+                            # This ensures we NEVER lose a paper even if MinIO upload fails
+                            try:
+                                import base64
+                                with open(pdf_path, 'rb') as pdf_file_handle:
+                                    pdf_bytes = pdf_file_handle.read()
+                                    pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+                                
+                                # Store in a dedicated collection for paper backups
+                                paper_backup = {
+                                    "runId": run_id,
+                                    "filename": pdf_file,
+                                    "kind": kind,
+                                    "is_final": is_final,
+                                    "size_bytes": len(pdf_bytes),
+                                    "pdf_base64": pdf_base64,
+                                    "createdAt": datetime.now(timezone.utc)
+                                }
+                                db['paper_backups'].update_one(
+                                    {"runId": run_id, "filename": pdf_file},
+                                    {"$set": paper_backup},
+                                    upsert=True
+                                )
+                                print(f"   ✅ PDF saved to MongoDB as base64 backup ({len(pdf_bytes)} bytes)")
+                                event_emitter.log(run_id, f"PDF backed up to MongoDB: {pdf_file} ({len(pdf_bytes)} bytes)", "info", "Stage_3")
+                            except Exception as mongo_backup_error:
+                                print(f"   ⚠️ MongoDB base64 backup failed: {mongo_backup_error}")
+                                event_emitter.log(run_id, f"MongoDB backup failed: {str(mongo_backup_error)[:100]}", "warning", "Stage_3")
+                            emitter.flush()
+                            
                             print(f"   📤 Uploading {kind}: {pdf_file}")
                             event_emitter.log(run_id, f"📤 Uploading {kind} to artifact storage: {pdf_file}", "info", "Stage_3")
                             emitter.flush()
