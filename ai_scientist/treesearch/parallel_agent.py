@@ -20,6 +20,7 @@ from dataclasses import asdict
 from omegaconf import OmegaConf
 
 from rich import print
+from rich.markup import escape as rich_escape
 from pathlib import Path
 import base64
 import sys
@@ -1033,8 +1034,8 @@ from datasets import load_dataset
                     ),
                 )
 
-                # Use regular print to avoid Rich markup parsing issues with LLM response
-                print(f"Plot selection response: {response_select_plots}")
+                # Escape LLM response to avoid Rich markup parsing issues
+                print(f"[cyan]Plot selection response:[/cyan] {rich_escape(response_select_plots)}")
                 # Extract the plot paths list
                 selected_plots = response_select_plots.get("selected_plots", [])
 
@@ -1339,8 +1340,8 @@ class ParallelAgent:
             temperature=self.cfg.agent.code.temp,
         )
 
-        # Use regular print to avoid Rich markup parsing issues with LLM response
-        print(f"Defined eval metrics: {response}")
+        # Escape LLM response to avoid Rich markup parsing issues
+        print(f"[green]Defined eval metrics:[/green] {rich_escape(response)}")
         return response
 
     def plan_and_code_query(self, prompt, retries=3) -> tuple[str, str]:
@@ -1792,8 +1793,8 @@ class ParallelAgent:
                         # This is achieved by raising an error in the MetricValue class,
                         # which sets child_node.is_buggy to True, thereby
                         # causing child_node.metric to be assigned WorstMetricValue.
-                        # Use regular print to avoid Rich markup parsing issues with LLM response
-                        print(f"Metrics: {metrics_response}")
+                        # Escape LLM response to avoid Rich markup parsing issues
+                        print(f"[blue]Metrics:[/blue] {rich_escape(metrics_response)}")
                         if metrics_response["valid_metrics_received"]:
                             child_node.metric = MetricValue(
                                 value={"metric_names": metrics_response["metric_names"]}
