@@ -303,6 +303,20 @@ class MinimalAgent:
 
 **2025 PYTHON ML BEST PRACTICES** (CRITICAL - avoid deprecated patterns):
 
+**DEEP LEARNING / NEURAL NETWORKS - USE PYTORCH:**
+  - For ANY experiment involving neural networks, deep learning, transformers, or gradient-based training: USE PYTORCH, not sklearn!
+  - Simple metrics like accuracy, F1, etc. should be computed with PyTorch or numpy directly:
+    ```python
+    # ✅ DO THIS - use PyTorch/numpy for metrics in deep learning code:
+    accuracy = (predictions == labels).float().mean().item()
+    # or with numpy:
+    accuracy = (np.array(preds) == np.array(labels)).mean()
+    
+    # ❌ DON'T use sklearn for simple metrics in deep learning code:
+    # from sklearn.metrics import accuracy_score  # unnecessary dependency!
+    ```
+  - sklearn is for traditional ML (random forests, SVMs, preprocessing). For neural networks, stay in the PyTorch ecosystem.
+
 **Optimizers & Training:**
   - AdamW: Use `from torch.optim import AdamW` (REMOVED from transformers in 2024)
   - All optimizers: Import from `torch.optim`, NOT from transformers

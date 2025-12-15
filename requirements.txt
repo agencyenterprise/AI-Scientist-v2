@@ -13,9 +13,10 @@ seaborn
 # Common Requirements
 numpy
 torch
+torchvision
 sympy
 transformers
-datasets
+datasets==3.6.0
 hf-transfer
 tiktoken
 wandb
@@ -36,3 +37,15 @@ psutil
 watchdog
 runpod
 playwright
+# ML packages mentioned in agent prompts
+scikit-learn
+pandas
+statsmodels
+xgboost
+lightgbm
+peft
+bayesian-optimization
+timm
+albumentations
+torch-geometric
+sentence-transformers
