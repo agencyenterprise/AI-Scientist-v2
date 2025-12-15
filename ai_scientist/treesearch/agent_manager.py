@@ -154,16 +154,19 @@ class AgentManager:
                 - Don't oversimplify: prioritize scientific validity over implementation simplicity
                 - Use the full hardware available (RTX 4090 with 24GB VRAM) - don't limit yourself to tiny models
                 - Use a dataset appropriate to the experiment (real datasets from HuggingFace when suitable)
+                - CRITICAL: Do NOT use gated datasets or datasets that require accepting Terms of Service (e.g., datasets with "gated" access on HuggingFace). Only use freely accessible public datasets that can be downloaded without human approval.
                 - If you are given \"Code To Use\", you can directly use it as a starting point.""",
             2: """
                 - Change hyperparameters such as learning rate, number of epochs, batch size, etc. to improve the performance
                 - DO NOT change the model architecture from the previous stage
-                - Introduce additional datasets from HuggingFace to test the model. Use dataset sizes appropriate to the experiment. Use streaming=True for very large datasets. See hf_dataset_reference.py for examples of available datasets.""",
+                - Introduce additional datasets from HuggingFace to test the model. Use dataset sizes appropriate to the experiment. Use streaming=True for very large datasets. See hf_dataset_reference.py for examples of available datasets.
+                - CRITICAL: Do NOT use gated datasets or datasets requiring Terms of Service acceptance. Only use freely accessible public datasets.""",
             3: """
                 - Explore novel improvements
                 - Come up with experiments to reveal new insights
                 - Be creative and think outside the box
-                - Test your models on multiple HuggingFace datasets to demonstrate generalization. Use dataset sizes appropriate to the experiment. Usually THREE datasets are enough.""",
+                - Test your models on multiple HuggingFace datasets to demonstrate generalization. Use dataset sizes appropriate to the experiment. Usually THREE datasets are enough.
+                - CRITICAL: Do NOT use gated datasets or datasets requiring Terms of Service acceptance. Only use freely accessible public datasets.""",
             4: """
                 - Conduct systematic component analysis that reveals the contribution of each part
                 - Use the same datasets you used from the previous stage""",

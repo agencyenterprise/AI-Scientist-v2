@@ -21,11 +21,15 @@ def main() -> int:
 
     client = OpenAI()
     prompt = "Say a friendly hello world in one short sentence."
+    
+    # Test model - change this to test different models
+    model = "gpt-5.2"
+    print(f"Testing model: {model}")
 
     completion = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=20,
+        max_completion_tokens=20,
     )
 
     message = completion.choices[0].message.content

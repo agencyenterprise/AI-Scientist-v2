@@ -346,7 +346,8 @@ from datasets import load_dataset
                           f"  - Good batch sizes (use batch sizes of 16-64 for training, can go higher for inference)\n" \
                           f"  - Extensive training (15-20+ epochs is fine)\n" \
                           f"  - Large datasets with millions of samples - with {ram_gb}GB RAM, you can load most datasets directly into memory\n" \
-                          f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or similar-sized models. For fine-tuning, you can use models from HuggingFace with PEFT/LoRA for larger models to fit in memory. With {ram_gb}GB RAM, you have plenty of memory for large datasets - only use streaming=True for massive datasets (>50GB)."
+                          f"Don't limit yourself to tiny models like distilgpt2 (82M) - consider using gpt2-medium (355M), gpt2-large (774M), or similar-sized models. For fine-tuning, you can use models from HuggingFace with PEFT/LoRA for larger models to fit in memory. With {ram_gb}GB RAM, you have plenty of memory for large datasets - only use streaming=True for massive datasets (>50GB).\n" \
+                          f"*** IMPORTANT: Only use freely accessible models and datasets. Do NOT use gated models (like Llama, Mistral-Instruct, etc.) or gated datasets that require accepting Terms of Service - these require manual human approval and will fail in automated pipelines. ***"
             
             # Add compute notes if provided
             if hasattr(self.cfg.compute, "notes") and self.cfg.compute.notes:
@@ -557,6 +558,7 @@ from datasets import load_dataset
                 "The solution sketch should be 6-10 sentences.",
                 "Don't suggest to do EDA.",
                 "Prioritize using real public datasets (e.g., from HuggingFace) when they suit the task, and only fall back to synthetic data if no suitable dataset is available or synthetic generation is essential to the proposed experiment.",
+                "*** CRITICAL: Do NOT use gated datasets or datasets that require accepting Terms of Service (e.g., datasets with 'gated' access on HuggingFace like Llama models, some medical datasets, etc.). Only use freely accessible public datasets that can be downloaded programmatically without human approval. ***",
                 "You have powerful hardware (RTX 4090, 24GB VRAM) - don't limit yourself to distilgpt2 or tiny models. Use gpt2-medium, gpt2-large, or similar.",
                 "",
             ],

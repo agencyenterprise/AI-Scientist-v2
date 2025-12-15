@@ -178,7 +178,7 @@ data/
 templates/*/run_0/
 templates/*/*.png
 results/
-# logs/
+logs/
 
 # data folders under review_iclr_bench/
 review_iclr_bench/iclr_papers/

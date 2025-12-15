@@ -9,6 +9,8 @@ import requests
 import socket
 import re
 import subprocess
+import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -23,6 +25,82 @@ if os.path.exists('.env'):
     load_dotenv(override=True)
 
 from event_emitter import CloudEventEmitter
+
+# ============================================================================
+# File Logging Setup - Persists all output for debugging failed runs
+# ============================================================================
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
+
+# Create a unique log file per worker session, plus a symlink to "latest"
+LOG_FILE = LOG_DIR / f"pod_worker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+LATEST_LOG = LOG_DIR / "pod_worker_latest.log"
+
+# Set up file handler with rotation (10MB max, keep 5 backups)
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10 * 1024 * 1024,  # 10 MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter(
+    '%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+file_handler.setFormatter(file_formatter)
+
+# Console handler - same format for consistency
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(file_formatter)
+
+# Create and configure the logger
+logger = logging.getLogger("pod_worker")
+logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Update the "latest" symlink to point to current log
+try:
+    if LATEST_LOG.is_symlink() or LATEST_LOG.exists():
+        LATEST_LOG.unlink()
+    LATEST_LOG.symlink_to(LOG_FILE.name)
+except Exception as e:
+    logger.warning(f"Could not create latest log symlink: {e}")
+
+logger.info(f"📝 Logging to file: {LOG_FILE}")
+logger.info(f"📝 Symlink: {LATEST_LOG} -> {LOG_FILE.name}")
+
+
+class TeeOutput:
+    """Redirect stdout/stderr to both console and log file."""
+    def __init__(self, original_stream, log_func):
+        self.original_stream = original_stream
+        self.log_func = log_func
+        self.buffer = ""
+    
+    def write(self, text):
+        self.original_stream.write(text)
+        self.original_stream.flush()
+        
+        # Buffer incomplete lines, log complete ones
+        self.buffer += text
+        while '\n' in self.buffer:
+            line, self.buffer = self.buffer.split('\n', 1)
+            if line.strip():  # Don't log empty lines
+                self.log_func(line.rstrip())
+    
+    def flush(self):
+        self.original_stream.flush()
+        if self.buffer.strip():
+            self.log_func(self.buffer.rstrip())
+            self.buffer = ""
+
+
+# Redirect stdout and stderr to also write to the log file
+sys.stdout = TeeOutput(sys.__stdout__, lambda msg: logger.info(msg))
+sys.stderr = TeeOutput(sys.__stderr__, lambda msg: logger.error(msg))
 
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "https://ai-scientist-v2-production.up.railway.app")
 MONGODB_URL = os.environ.get("MONGODB_URL", "")
@@ -365,7 +443,13 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
         "traceback": "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     }
     
-    print(f"\n❌ UNHANDLED EXCEPTION: {error_info['type']}: {error_info['message']}", file=sys.stderr)
+    # Log to file explicitly (in case stdout redirect failed)
+    logger.critical(f"UNHANDLED EXCEPTION: {error_info['type']}: {error_info['message']}")
+    logger.critical(f"Full traceback:\n{error_info['traceback']}")
+    logger.critical(f"Current run_id: {CURRENT_RUN_ID}, stage: {CURRENT_STAGE}")
+    
+    # Also print to stderr (which will also go to log via TeeOutput)
+    print(f"\n❌ UNHANDLED EXCEPTION: {error_info['type']}: {error_info['message']}", file=sys.__stderr__)
     
     try:
         emit_event("ai.run.failed", {
@@ -378,7 +462,8 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
         })
         emitter.flush()
     except:
-        print(f"CRITICAL: Failed to emit error event", file=sys.stderr)
+        logger.critical("CRITICAL: Failed to emit error event to control plane")
+        print(f"CRITICAL: Failed to emit error event", file=sys.__stderr__)
     
     sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
@@ -1089,6 +1174,17 @@ def run_ideation_pipeline(request: Dict[str, Any], mongo_client) -> None:
     except Exception as e:
         error_msg = str(e)
         failed_at = datetime.utcnow()
+        
+        # Ensure error is logged to file
+        logger.error(f"=" * 60)
+        logger.error(f"IDEATION FAILED: {request_id}")
+        logger.error(f"Hypothesis ID: {hypothesis_id}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {error_msg}")
+        logger.error(f"Full traceback:")
+        logger.error(traceback.format_exc())
+        logger.error(f"=" * 60)
+        
         print(f"\n❌ Ideation failed: {error_msg}\n", file=sys.stderr)
         traceback.print_exc()
         
@@ -1887,6 +1983,16 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         print(f"🛑 Run {run_id} canceled; pipeline exited cleanly.")
 
     except Exception as e:
+        # Ensure error is logged to file even if stdout is broken
+        logger.error(f"=" * 60)
+        logger.error(f"EXPERIMENT FAILED: {run_id}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error(f"Current stage: {CURRENT_STAGE}")
+        logger.error(f"Full traceback:")
+        logger.error(traceback.format_exc())
+        logger.error(f"=" * 60)
+        
         print(f"\n❌ Experiment failed: {e}", file=sys.stderr)
         traceback.print_exc()
         
@@ -2242,6 +2348,15 @@ def perform_writeup_retry(run: Dict[str, Any], mongo_client):
         print(f"\n✅ Writeup retry completed: {run_id}\n")
         
     except Exception as e:
+        # Ensure error is logged to file
+        logger.error(f"=" * 60)
+        logger.error(f"WRITEUP RETRY FAILED: {run_id}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error(f"Full traceback:")
+        logger.error(traceback.format_exc())
+        logger.error(f"=" * 60)
+        
         print(f"\n❌ Writeup retry failed: {e}", file=sys.stderr)
         traceback.print_exc()
         
@@ -2296,6 +2411,12 @@ def main():
     else:
         print(f"Git Auto-Pull: Disabled")
     print(f"Mode: {mode.upper()}")
+    print(f"{'='*60}")
+    print(f"")
+    print(f"📋 LOG FILES (for debugging failed runs):")
+    print(f"   Current:  {LOG_FILE.absolute()}")
+    print(f"   Latest:   {LATEST_LOG.absolute()}")
+    print(f"   View:     tail -f {LATEST_LOG}")
     print(f"{'='*60}\n")
     
     if not MONGODB_URL:
@@ -2324,9 +2445,14 @@ def main():
         try:
             task_processed = False
             
+            # Flush log handlers to ensure file is up to date
+            for handler in logger.handlers:
+                handler.flush()
+            
             if mode in ("ideation", "hybrid"):
                 ideation = fetch_next_ideation(mongo_client, POD_ID)
                 if ideation:
+                    logger.info(f"🧠 CLAIMED IDEATION: {ideation['_id']}, hypothesis={ideation.get('hypothesisId')}")
                     run_ideation_pipeline(ideation, mongo_client)
                     print("\n✅ Ideation task completed!")
                     print("🔄 Checking for code updates...")
@@ -2340,6 +2466,7 @@ def main():
             if not task_processed and mode in ("experiment", "hybrid"):
                 run = fetch_next_experiment(mongo_client, POD_ID)
                 if run:
+                    logger.info(f"🚀 CLAIMED EXPERIMENT: {run['_id']}, hypothesis={run.get('hypothesisId')}")
                     run_experiment_pipeline(run, mongo_client)
                     print("\n✅ Experiment completed!")
                     print("🔄 Checking for code updates...")
@@ -2350,6 +2477,7 @@ def main():
                 else:
                     writeup_retry = fetch_writeup_retry(mongo_client, POD_ID)
                     if writeup_retry:
+                        logger.info(f"📝 CLAIMED WRITEUP RETRY: {writeup_retry['_id']}")
                         perform_writeup_retry(writeup_retry, mongo_client)
                         print("\n✅ Writeup retry completed!")
                         print("🔄 Checking for code updates...")
@@ -2377,10 +2505,13 @@ def main():
             time.sleep(10)
         
         except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt, shutting down...")
             print("\n🛑 Shutting down gracefully...")
             emitter.flush()
             break
         except Exception as e:
+            logger.error(f"MAIN LOOP ERROR: {type(e).__name__}: {str(e)}")
+            logger.error(traceback.format_exc())
             print(f"❌ Worker error: {e}", file=sys.stderr)
             traceback.print_exc()
             time.sleep(30)
