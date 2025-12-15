@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { getDb } from "@/lib/db"
 
 /**
- * GET /api/runs/[runId]/paper-backup
+ * GET /api/runs/[id]/paper-backup
  * 
  * Retrieves paper PDF from MongoDB base64 backup.
  * This is a fallback when MinIO artifacts are missing.
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ runId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { runId } = await params
+  const { id: runId } = await params
   
   try {
     const db = await getDb()

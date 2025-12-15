@@ -2016,10 +2016,12 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             if archive_uploaded:
                 print(f"✓ Archived experiment to MinIO")
                 event_emitter.log(run_id, "✅ Archive uploaded successfully to MinIO", "info", "completion")
-                print(f"🧹 Cleaning up local experiment directory...")
-                import shutil
-                shutil.rmtree(idea_dir, ignore_errors=True)
-                print(f"✓ Cleaned up {idea_dir}")
+                # DISABLED: No longer deleting experiment folders to prevent data loss
+                # print(f"🧹 Cleaning up local experiment directory...")
+                # import shutil
+                # shutil.rmtree(idea_dir, ignore_errors=True)
+                # print(f"✓ Cleaned up {idea_dir}")
+                print(f"📁 Keeping local experiment directory: {idea_dir}")
             else:
                 print(f"⚠️ Archive upload failed - keeping local experiment directory: {idea_dir}")
                 print(f"   You can manually clean up later or retry the archive upload")

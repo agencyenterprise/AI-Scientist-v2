@@ -84,11 +84,11 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
     with Status("Preparing agent workspace (copying and extracting files) ..."):
         prep_agent_workspace(cfg)
 
-    def cleanup():
-        if global_step == 0:
-            shutil.rmtree(cfg.workspace_dir)
-
-    atexit.register(cleanup)
+    # DISABLED: No longer auto-cleaning workspace to prevent data loss
+    # def cleanup():
+    #     if global_step == 0:
+    #         shutil.rmtree(cfg.workspace_dir)
+    # atexit.register(cleanup)
 
     manager = AgentManager(
         task_desc=task_desc,
