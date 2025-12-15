@@ -1309,6 +1309,13 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
         with open(idea_path_json, "w") as f:
             json.dump(idea_json, f, indent=4)
         
+        # VERIFICATION: Confirm ChatContext was written to idea.json
+        print(f"📄 Written idea.json with keys: {list(idea_json.keys())}")
+        if "ChatContext" in idea_json:
+            print(f"✅ VERIFIED: ChatContext ({len(idea_json['ChatContext'])} chars) written to {idea_path_json}")
+        else:
+            print(f"⚠️ WARNING: ChatContext NOT in idea.json - hypothesis may be missing extractedRawText")
+        
         from ai_scientist.treesearch.bfts_utils import edit_bfts_config_file
         config_path = "bfts_config.yaml"
         idea_config_path = edit_bfts_config_file(config_path, idea_dir, idea_path_json)
