@@ -89,15 +89,18 @@ export function CreateHypothesisForm() {
     }, 3000)
   }
 
-  const validateChatGptUrl = (url: string): string | null => {
+  const validateConversationUrl = (url: string): string | null => {
     if (!url.trim()) return null
     
-    if (!url.includes('chatgpt.com')) {
-      return "URL must be from chatgpt.com"
+    const isChatGpt = url.includes('chatgpt.com')
+    const isGemini = url.includes('gemini.google.com')
+    
+    if (!isChatGpt && !isGemini) {
+      return "URL must be from chatgpt.com or gemini.google.com"
     }
     
     if (!url.includes('/share/')) {
-      return "ChatGPT conversation must be shared and public. Click the share button in ChatGPT and use that URL."
+      return "Conversation must be shared and public. Click the share button and use that URL."
     }
     
     return null
@@ -107,7 +110,7 @@ export function CreateHypothesisForm() {
     setChatGptUrl(url)
     setError(null)
 
-    const validationError = validateChatGptUrl(url)
+    const validationError = validateConversationUrl(url)
     if (validationError) {
       setError(validationError)
     }
@@ -119,7 +122,7 @@ export function CreateHypothesisForm() {
       return
     }
 
-    const validationError = validateChatGptUrl(chatGptUrl)
+    const validationError = validateConversationUrl(chatGptUrl)
     if (validationError) {
       setError(validationError)
       return
@@ -310,10 +313,10 @@ export function CreateHypothesisForm() {
               className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
               htmlFor="chatgpt-url"
             >
-              Paste chatgpt share link
+              Paste ChatGPT or Gemini share link
             </label>
             <p className="text-xs text-slate-500">
-              We&apos;ll extract the title and summary automatically.
+              We&apos;ll extract the conversation and structure it automatically.
             </p>
           </div>
           <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
@@ -321,7 +324,7 @@ export function CreateHypothesisForm() {
               <input
                 id="chatgpt-url"
                 type="url"
-                placeholder="https://chatgpt.com/share/..."
+                placeholder="https://chatgpt.com/share/... or https://gemini.google.com/share/..."
                 className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 pr-32 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
                 value={chatGptUrl}
                 onChange={(event) => handleChatGptUrlChange(event.target.value)}
@@ -356,8 +359,8 @@ export function CreateHypothesisForm() {
           </div>
           <p className={`mt-2 text-xs ${extracting ? "text-sky-200" : "text-slate-500"}`}>
             {extracting
-              ? "Extracting the hypothesis from ChatGPT — this usually takes under 30 seconds. We’ll spin up a new run as soon as it’s ready."
-              : "Paste a shared ChatGPT conversation URL to automatically extract and structure your hypothesis."}
+              ? "Extracting the hypothesis — this usually takes under 30 seconds. We'll spin up a new run as soon as it's ready."
+              : "Paste a shared ChatGPT or Gemini conversation URL to automatically extract and structure your hypothesis."}
           </p>
         </div>
 

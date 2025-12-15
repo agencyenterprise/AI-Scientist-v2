@@ -3,6 +3,7 @@ import { z } from "zod"
 import OpenAI from "openai"
 import { randomUUID } from "node:crypto"
 import { ChatGPTSharedExtractor } from "@/lib/services/chatgpt-extractor.service"
+import { GeminiSharedExtractor } from "@/lib/services/gemini-extractor.service"
 import { getEnv } from "@/lib/config/env"
 import { createHypothesis, updateHypothesis } from "@/lib/repos/hypotheses.repo"
 import { createIdeationRequest } from "@/lib/repos/ideations.repo"
@@ -10,15 +11,26 @@ import { enqueueRun } from "@/lib/services/runs.service"
 
 export const runtime = "nodejs"
 
+// Helper to detect URL type
+function getConversationUrlType(url: string): 'chatgpt' | 'gemini' | null {
+  if (url.includes("chatgpt.com") && url.includes("/share/")) {
+    return 'chatgpt'
+  }
+  if (url.includes("gemini.google.com") && url.includes("/share/")) {
+    return 'gemini'
+  }
+  return null
+}
+
 const ExtractAndCreateSchema = z
   .object({
     url: z
       .string()
       .url()
       .refine(
-        (url) => url.includes("chatgpt.com") && url.includes("/share/"),
+        (url) => getConversationUrlType(url) !== null,
         {
-          message: "URL must be a shared ChatGPT conversation (must contain chatgpt.com/share/)"
+          message: "URL must be a shared conversation from ChatGPT (chatgpt.com/share/...) or Gemini (gemini.google.com/share/...)"
         }
       ),
     enableIdeation: z.boolean().optional().default(false),
@@ -152,16 +164,31 @@ async function processExtractionInBackground(
   options: ExtractionOptions = {}
 ) {
   try {
-    const extractor = new ChatGPTSharedExtractor()
-    const extractedText = await extractor.extractPlainText(url)
+    // Choose extractor based on URL type
+    const urlType = getConversationUrlType(url)
+    console.error(`[Extract Background] URL type: ${urlType}, URL: ${url}`)
+    
+    let extractedText: string
+    
+    if (urlType === 'gemini') {
+      console.error('[Extract Background] Using Gemini extractor (requires Playwright)...')
+      const extractor = new GeminiSharedExtractor()
+      extractedText = await extractor.extractPlainText(url)
+    } else {
+      console.error('[Extract Background] Using ChatGPT extractor...')
+      const extractor = new ChatGPTSharedExtractor()
+      extractedText = await extractor.extractPlainText(url)
+    }
 
     if (!extractedText || extractedText.trim().length === 0) {
       await updateHypothesis(hypothesisId, {
         extractionStatus: "failed",
-        idea: "Failed to extract content from ChatGPT conversation"
+        idea: `Failed to extract content from ${urlType === 'gemini' ? 'Gemini' : 'ChatGPT'} conversation`
       })
       return
     }
+    
+    console.error(`[Extract Background] Successfully extracted ${extractedText.length} chars`)
 
     // Structure the conversation using LLM
     const structured = await structureHypothesisWithLLM(extractedText)
