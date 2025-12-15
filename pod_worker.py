@@ -74,33 +74,31 @@ logger.info(f"📝 Symlink: {LATEST_LOG} -> {LOG_FILE.name}")
 
 
 class TeeOutput:
-    """Redirect stdout/stderr to both console and log file."""
-    def __init__(self, original_stream, log_func):
+    """Redirect stdout/stderr to both console and log file (without recursion)."""
+    def __init__(self, original_stream, file_handler):
         self.original_stream = original_stream
-        self.log_func = log_func
+        self.file_handler = file_handler
         self.buffer = ""
     
     def write(self, text):
+        # Write to original stream (console)
         self.original_stream.write(text)
         self.original_stream.flush()
         
-        # Buffer incomplete lines, log complete ones
-        self.buffer += text
-        while '\n' in self.buffer:
-            line, self.buffer = self.buffer.split('\n', 1)
-            if line.strip():  # Don't log empty lines
-                self.log_func(line.rstrip())
+        # Write directly to file handler's stream (no logging recursion)
+        if self.file_handler and self.file_handler.stream:
+            self.file_handler.stream.write(text)
+            self.file_handler.stream.flush()
     
     def flush(self):
         self.original_stream.flush()
-        if self.buffer.strip():
-            self.log_func(self.buffer.rstrip())
-            self.buffer = ""
+        if self.file_handler and self.file_handler.stream:
+            self.file_handler.stream.flush()
 
 
-# Redirect stdout and stderr to also write to the log file
-sys.stdout = TeeOutput(sys.__stdout__, lambda msg: logger.info(msg))
-sys.stderr = TeeOutput(sys.__stderr__, lambda msg: logger.error(msg))
+# Redirect stdout and stderr to also write to the log file (avoids recursion)
+sys.stdout = TeeOutput(sys.__stdout__, file_handler)
+sys.stderr = TeeOutput(sys.__stderr__, file_handler)
 
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "https://ai-scientist-v2-production.up.railway.app")
 MONGODB_URL = os.environ.get("MONGODB_URL", "")
