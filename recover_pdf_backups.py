@@ -68,6 +68,7 @@ def upload_artifact(run_id: str, file_path: str, kind: str) -> bool:
             "_id": str(uuid4()),
             "runId": run_id,
             "key": f"runs/{run_id}/{filename}",
+            "uri": f"runs/{run_id}/{filename}",  # Required field!
             "size": len(file_bytes),
             "sha256": sha256,
             "contentType": content_type,
