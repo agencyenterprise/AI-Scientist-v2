@@ -780,6 +780,10 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
     """Upload artifact with retry logic for transient failures (502, 503, etc.)"""
     filename = os.path.basename(file_path)
     content_type = get_content_type(filename)
+    file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+    
+    # Log upload attempt start
+    logger.info(f"MINIO_UPLOAD_START | run={run_id} | file={filename} | kind={kind} | size={file_size}")
     
     for attempt in range(max_retries):
         try:
@@ -787,28 +791,56 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
                 # Exponential backoff: 2s, 4s, 8s...
                 wait_time = 2 ** attempt
                 print(f"   ⏳ Retry {attempt}/{max_retries-1} after {wait_time}s...")
+                logger.warning(f"MINIO_UPLOAD_RETRY | run={run_id} | file={filename} | attempt={attempt}/{max_retries-1} | wait={wait_time}s")
                 time.sleep(wait_time)
             
             print(f"📤 Uploading artifact: {filename} ({kind})")
             
+            # Step 1: Get presigned URL
+            presign_url = f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign"
+            logger.info(f"MINIO_PRESIGN_REQUEST | run={run_id} | file={filename} | url={presign_url}")
+            
             resp = requests.post(
-                f"{CONTROL_PLANE_URL}/api/runs/{run_id}/artifacts/presign",
+                presign_url,
                 json={"action": "put", "filename": filename, "content_type": content_type},
                 timeout=30
             )
-            resp.raise_for_status()
-            presigned_url = resp.json()["url"]
             
+            if resp.status_code != 200:
+                error_text = resp.text[:500] if resp.text else "No response body"
+                logger.error(f"MINIO_PRESIGN_FAILED | run={run_id} | file={filename} | status={resp.status_code} | error={error_text}")
+                print(f"   ❌ Presign request failed: {resp.status_code} - {error_text}")
+                event_emitter.log(run_id, f"❌ MinIO presign failed for {filename}: HTTP {resp.status_code}", "error", "upload")
+                resp.raise_for_status()
+            
+            presigned_url = resp.json()["url"]
+            logger.info(f"MINIO_PRESIGN_SUCCESS | run={run_id} | file={filename} | url_length={len(presigned_url)}")
+            
+            # Step 2: Read file
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
             
             print(f"   Uploading {len(file_bytes)} bytes to MinIO...")
+            logger.info(f"MINIO_PUT_START | run={run_id} | file={filename} | size={len(file_bytes)}")
+            
+            # Step 3: Upload to MinIO
             resp = requests.put(presigned_url, data=file_bytes, timeout=300)
-            resp.raise_for_status()
+            
+            if resp.status_code != 200:
+                error_text = resp.text[:500] if resp.text else "No response body"
+                logger.error(f"MINIO_PUT_FAILED | run={run_id} | file={filename} | status={resp.status_code} | error={error_text}")
+                print(f"   ❌ MinIO PUT failed: {resp.status_code} - {error_text}")
+                event_emitter.log(run_id, f"❌ MinIO PUT failed for {filename}: HTTP {resp.status_code} - {error_text[:100]}", "error", "upload")
+                resp.raise_for_status()
+            
+            logger.info(f"MINIO_PUT_SUCCESS | run={run_id} | file={filename} | size={len(file_bytes)}")
             
             sha256 = hashlib.sha256(file_bytes).hexdigest()
             
+            # Step 4: Register in database
             print(f"   Registering artifact in database...")
+            logger.info(f"MINIO_REGISTER_START | run={run_id} | file={filename} | sha256={sha256[:16]}...")
+            
             event_emitter.artifact_registered(
                 run_id,
                 f"runs/{run_id}/{filename}",
@@ -818,27 +850,64 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
                 kind
             )
             
+            logger.info(f"MINIO_UPLOAD_COMPLETE | run={run_id} | file={filename} | kind={kind} | size={len(file_bytes)}")
             print(f"✓ Artifact uploaded successfully: {filename}")
+            event_emitter.log(run_id, f"✅ Artifact uploaded: {filename} ({len(file_bytes)} bytes)", "info", "upload")
             return True
             
         except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else "unknown"
+            response_text = e.response.text[:500] if e.response is not None and e.response.text else "No response"
+            
+            logger.error(f"MINIO_HTTP_ERROR | run={run_id} | file={filename} | attempt={attempt+1}/{max_retries} | status={status_code} | error={str(e)} | response={response_text}")
+            
             # Retry on 502, 503, 504 (transient server errors)
             if e.response is not None and e.response.status_code in (502, 503, 504):
                 print(f"   ⚠️ Got {e.response.status_code}, will retry...")
+                event_emitter.log(run_id, f"⚠️ MinIO transient error for {filename}: HTTP {status_code}, retrying...", "warning", "upload")
                 if attempt == max_retries - 1:
+                    logger.error(f"MINIO_UPLOAD_EXHAUSTED | run={run_id} | file={filename} | attempts={max_retries} | final_status={status_code}")
                     print(f"❌ Artifact upload failed after {max_retries} attempts: {e}")
+                    event_emitter.log(run_id, f"❌ MinIO upload FAILED after {max_retries} retries: {filename} - {str(e)[:100]}", "error", "upload")
                     traceback.print_exc()
                     return False
                 continue
+            
             # Non-retryable HTTP error
+            logger.error(f"MINIO_UPLOAD_FAILED_FINAL | run={run_id} | file={filename} | status={status_code} | error={str(e)}")
             print(f"❌ Artifact upload failed: {e}")
+            event_emitter.log(run_id, f"❌ MinIO upload FAILED: {filename} - HTTP {status_code}: {str(e)[:100]}", "error", "upload")
             traceback.print_exc()
             return False
+            
+        except requests.exceptions.Timeout as e:
+            logger.error(f"MINIO_TIMEOUT | run={run_id} | file={filename} | attempt={attempt+1}/{max_retries} | error={str(e)}")
+            print(f"   ⚠️ Upload timed out, will retry...")
+            event_emitter.log(run_id, f"⚠️ MinIO timeout for {filename}, retrying...", "warning", "upload")
+            if attempt == max_retries - 1:
+                logger.error(f"MINIO_TIMEOUT_EXHAUSTED | run={run_id} | file={filename} | attempts={max_retries}")
+                event_emitter.log(run_id, f"❌ MinIO upload FAILED: {filename} - Timeout after {max_retries} retries", "error", "upload")
+                return False
+            continue
+            
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"MINIO_CONNECTION_ERROR | run={run_id} | file={filename} | attempt={attempt+1}/{max_retries} | error={str(e)}")
+            print(f"   ⚠️ Connection error, will retry...")
+            event_emitter.log(run_id, f"⚠️ MinIO connection error for {filename}, retrying...", "warning", "upload")
+            if attempt == max_retries - 1:
+                logger.error(f"MINIO_CONNECTION_EXHAUSTED | run={run_id} | file={filename} | attempts={max_retries}")
+                event_emitter.log(run_id, f"❌ MinIO upload FAILED: {filename} - Connection error after {max_retries} retries", "error", "upload")
+                return False
+            continue
+            
         except Exception as e:
+            logger.error(f"MINIO_UNEXPECTED_ERROR | run={run_id} | file={filename} | attempt={attempt+1}/{max_retries} | error_type={type(e).__name__} | error={str(e)}")
             print(f"❌ Artifact upload failed: {e}")
+            event_emitter.log(run_id, f"❌ MinIO upload FAILED: {filename} - {type(e).__name__}: {str(e)[:100]}", "error", "upload")
             traceback.print_exc()
             return False
     
+    logger.error(f"MINIO_UPLOAD_FAILED_UNKNOWN | run={run_id} | file={filename} | reason=exhausted_all_retries_without_exception")
     return False
 
 
