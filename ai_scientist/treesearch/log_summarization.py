@@ -158,6 +158,8 @@ def get_stage_summary(journal, stage_name, model, client):
 
 def get_node_log(node):
     node_dict = node.to_dict()
+    node_id = node_dict.get("id", "unknown")[:8]
+    
     # Only include keys that are relevant for logging/analysis
     keys_to_include = [
         "overall_plan",
@@ -177,13 +179,26 @@ def get_node_log(node):
         for key in keys_to_include
         if key in node_dict and node_dict[key] is not None
     }
+    
+    # Log key info for debugging
+    is_buggy = node_dict.get("is_buggy", "unknown")
+    metric = node_dict.get("metric", {})
+    print(f"[LOG_SUMMARY] Node {node_id}: is_buggy={is_buggy}, metric={metric}, has_exp_results_dir={'exp_results_dir' in ret}")
+    
     if "exp_results_dir" in ret:
-        original_dir_path = ret["exp_results_dir"]
-        # Remove leading path segments before "experiment_results"
-        idx = original_dir_path.find("experiment_results")
+        original_dir_path = str(ret["exp_results_dir"])
+        # Remove leading path segments before "logs" to get path relative to experiment folder
+        # This ensures paths like "logs/0-run/experiment_results/..." work when running from experiment folder
+        idx = original_dir_path.find("/logs/")
         short_dir_path = original_dir_path
         if idx != -1:
-            short_dir_path = original_dir_path[idx:]
+            short_dir_path = original_dir_path[idx + 1:]  # +1 to skip the leading /
+        else:
+            # Fallback: try to find experiment_results
+            idx = original_dir_path.find("experiment_results")
+            if idx != -1:
+                # Prepend logs/0-run/ since that's the expected structure
+                short_dir_path = "logs/0-run/" + original_dir_path[idx:]
 
         ret["exp_results_dir"] = short_dir_path
 
@@ -193,8 +208,15 @@ def get_node_log(node):
             ret["exp_results_npy_files"] = [
                 os.path.join(short_dir_path, f) for f in npy_files
             ]
+            if npy_files:
+                print(f"[LOG_SUMMARY] Node {node_id}: Found {len(npy_files)} .npy files: {npy_files}")
+            else:
+                print(f"[LOG_SUMMARY] ⚠️ Node {node_id}: exp_results_dir exists but NO .npy files found in {original_dir_path}")
         else:
             ret["exp_results_npy_files"] = []
+            print(f"[LOG_SUMMARY] ⚠️ Node {node_id}: exp_results_dir does NOT exist: {original_dir_path}")
+    else:
+        print(f"[LOG_SUMMARY] ⚠️ Node {node_id}: No exp_results_dir in node data")
     return ret
 
 

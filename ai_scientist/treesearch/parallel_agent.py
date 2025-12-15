@@ -1530,6 +1530,14 @@ class ParallelAgent:
                         ) as f:
                             f.write(agg_plotting_code)
 
+                        # Move experiment data files (.npy)
+                        npy_files_found = list(plots_dir.glob("*.npy"))
+                        if npy_files_found:
+                            for npy_file in npy_files_found:
+                                final_npy_path = exp_results_dir / npy_file.name
+                                npy_file.resolve().rename(final_npy_path)
+                                logger.info(f"Saved aggregated experiment data to {final_npy_path}")
+                        
                         # Move generated plots
                         for plot_file in plots_dir.glob("*.png"):
                             final_path = exp_results_dir / plot_file.name
@@ -1692,6 +1700,40 @@ class ParallelAgent:
             process_interpreter.cleanup_session()
             emit("ai.run.log", {"message": f"Code execution completed ({exec_result.exec_time:.1f}s)", "level": "info"})
 
+            # LOG FULL EXECUTION OUTPUT for debugging - save to file AND print
+            print("=" * 80)
+            print(f"EXECUTION OUTPUT (node {child_node.id[:8]}...):")
+            print("=" * 80)
+            exec_log_content = []
+            exec_log_content.append(f"Node ID: {child_node.id}")
+            exec_log_content.append(f"Execution time: {exec_result.exec_time:.1f}s")
+            exec_log_content.append(f"Exception type: {exec_result.exc_type}")
+            exec_log_content.append("-" * 40 + " OUTPUT " + "-" * 40)
+            if exec_result.term_out:
+                for line in exec_result.term_out:
+                    print(line, end='')
+                    exec_log_content.append(line.rstrip() if isinstance(line, str) else str(line))
+            print("\n" + "=" * 80)
+            if exec_result.exc_type:
+                print(f"EXECUTION EXCEPTION: {exec_result.exc_type}")
+                print(f"EXCEPTION INFO: {exec_result.exc_info}")
+                exec_log_content.append("-" * 40 + " EXCEPTION " + "-" * 40)
+                exec_log_content.append(f"Type: {exec_result.exc_type}")
+                exec_log_content.append(f"Info: {exec_result.exc_info}")
+                logger.error(f"Execution failed with {exec_result.exc_type}: {exec_result.exc_info}")
+            print("=" * 80)
+            
+            # Save execution log to experiment directory
+            try:
+                exec_log_dir = Path(cfg.workspace_dir).parent / "logs" / Path(cfg.workspace_dir).name / "execution_logs"
+                exec_log_dir.mkdir(parents=True, exist_ok=True)
+                exec_log_file = exec_log_dir / f"exec_{child_node.id[:8]}_{os.getpid()}.log"
+                with open(exec_log_file, 'w') as f:
+                    f.write('\n'.join(exec_log_content))
+                print(f"Saved execution log to: {exec_log_file}")
+            except Exception as e:
+                print(f"Warning: Could not save execution log: {e}")
+
             print("Parsing execution results")
             emit("ai.run.log", {"message": "Analyzing results and extracting metrics", "level": "info"})
             worker_agent.parse_exec_result(
@@ -1701,8 +1743,13 @@ class ParallelAgent:
             if child_node.is_buggy:
                 bug_summary = child_node.analysis[:150] if child_node.analysis else "Unknown error"
                 emit("ai.run.log", {"message": f"Implementation has bugs: {bug_summary}", "level": "warn"})
+                # Log full bug analysis
+                print(f"\n🐛 NODE MARKED BUGGY: {child_node.id[:8]}...")
+                print(f"   Full analysis: {child_node.analysis}")
+                logger.warning(f"Node {child_node.id[:8]} is buggy: {child_node.analysis}")
             else:
                 emit("ai.run.log", {"message": "Implementation passed validation", "level": "info"})
+                print(f"\n✅ NODE PASSED: {child_node.id[:8]}...")
 
             # Add check for saved data files
             data_files = [f for f in os.listdir(working_dir) if f.endswith(".npy")]
@@ -1919,10 +1966,15 @@ class ParallelAgent:
                             f.write(child_node.code)
                         logger.info(f"Saved experiment code to {exp_code_path}")
                         # Move experiment data files to experiment_results directory
-                        for exp_data_file in plots_dir.glob("*.npy"):
+                        npy_files_found = list(plots_dir.glob("*.npy"))
+                        if not npy_files_found:
+                            logger.warning(f"⚠️ NO .npy FILES FOUND! The agent did not save experiment_data.npy. Paper figures will be missing!")
+                            emit("ai.run.log", {"message": "⚠️ No .npy data files saved - paper figures may be missing!", "level": "warning"})
+                        for exp_data_file in npy_files_found:
                             exp_data_path = exp_results_dir / exp_data_file.name
                             exp_data_file.resolve().rename(exp_data_path)
                             logger.info(f"Saved experiment data to {exp_data_path}")
+                            emit("ai.run.log", {"message": f"✓ Saved experiment data: {exp_data_file.name}", "level": "info"})
 
                         for plot_file in plots_dir.glob("*.png"):
                             # Get the base directory (parent of workspaces/logs)

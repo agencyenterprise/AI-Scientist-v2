@@ -72,6 +72,24 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
     cfg = load_cfg(config_path)
     logger.info(f'Starting run "{cfg.exp_name}"')
     
+    # Set up master experiment log file
+    master_log_path = Path(cfg.log_dir) / "master_experiment.log"
+    master_log_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    def log_to_master(msg: str, level: str = "INFO"):
+        """Log to master experiment file with timestamp."""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"{timestamp} | {level:8s} | {msg}\n"
+        with open(master_log_path, "a") as f:
+            f.write(log_line)
+        print(f"[MASTER_LOG] {msg}")
+    
+    log_to_master(f"=== EXPERIMENT STARTED: {cfg.exp_name} ===")
+    log_to_master(f"Config path: {config_path}")
+    log_to_master(f"Log dir: {cfg.log_dir}")
+    log_to_master(f"Workspace dir: {cfg.workspace_dir}")
+    
     # Use partial to create a picklable emit_event function
     emit_event = partial(_safe_emit_event, event_callback)
 
@@ -121,6 +139,9 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
     
     def step_callback(stage, journal):
         print("Step complete")
+        # Log to master experiment log
+        best_node = journal.get_best_node()
+        log_to_master(f"STEP COMPLETE | stage={stage.name} | total_nodes={len(journal.nodes)} | buggy={len(journal.buggy_nodes)} | good={len(journal.good_nodes)} | best_metric={best_node.metric if best_node else 'None'}")
         try:
             # Track iteration timing
             current_time = time.time()
@@ -285,6 +306,19 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
     )
 
     manager.run(exec_callback=create_exec_callback(status), step_callback=step_callback)
+    
+    log_to_master("=== EXPERIMENT ITERATIONS COMPLETED ===")
+    
+    # Log final journal status for each stage
+    for stage_name, journal in manager.journals.items():
+        best_node = journal.get_best_node()
+        log_to_master(f"FINAL | stage={stage_name} | total_nodes={len(journal.nodes)} | buggy={len(journal.buggy_nodes)} | good={len(journal.good_nodes)} | best_metric={best_node.metric if best_node else 'None'}")
+        
+        # Log each node's status for debugging
+        for node in journal.nodes:
+            node_id = node.id[:8] if node.id else "unknown"
+            has_exp_dir = hasattr(node, 'exp_results_dir') and node.exp_results_dir is not None
+            log_to_master(f"  NODE {node_id}: buggy={node.is_buggy}, metric={node.metric}, has_exp_dir={has_exp_dir}")
 
     manager_pickle_path = cfg.log_dir / "manager.pkl"
     try:
@@ -302,12 +336,40 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
 
     if cfg.generate_report:
         print("Generating final report from all stages...")
+        log_to_master("=== GENERATING SUMMARIES ===")
         (
             draft_summary,
             baseline_summary,
             research_summary,
             ablation_summary,
         ) = overall_summarize(manager.journals.items())
+        
+        # Log summary status
+        def check_npy_files(summary):
+            """Check if summary has any exp_results_npy_files."""
+            if not summary:
+                return 0
+            if isinstance(summary, dict):
+                npy_count = 0
+                for key, val in summary.items():
+                    if key == "exp_results_npy_files" and val:
+                        npy_count += len(val)
+                    elif isinstance(val, (dict, list)):
+                        npy_count += check_npy_files(val)
+                return npy_count
+            elif isinstance(summary, list):
+                return sum(check_npy_files(item) for item in summary)
+            return 0
+        
+        baseline_npy = check_npy_files(baseline_summary)
+        research_npy = check_npy_files(research_summary)
+        ablation_npy = check_npy_files(ablation_summary)
+        
+        log_to_master(f"SUMMARY | baseline_npy_files={baseline_npy} | research_npy_files={research_npy} | ablation_npy_files={ablation_npy}")
+        
+        if baseline_npy == 0 and research_npy == 0:
+            log_to_master("⚠️ WARNING: No .npy files in any summary! Paper will have no experimental figures!")
+        
         draft_summary_path = cfg.log_dir / "draft_summary.json"
         baseline_summary_path = cfg.log_dir / "baseline_summary.json"
         research_summary_path = cfg.log_dir / "research_summary.json"
@@ -330,6 +392,12 @@ def perform_experiments_bfts(config_path: str, event_callback=None):
         print(f"- Baseline summary: {baseline_summary_path}")
         print(f"- Research summary: {research_summary_path}")
         print(f"- Ablation summary: {ablation_summary_path}")
+        
+        log_to_master(f"=== SUMMARIES SAVED ===")
+        log_to_master(f"  Draft: {draft_summary_path}")
+        log_to_master(f"  Baseline: {baseline_summary_path}")
+        log_to_master(f"  Research: {research_summary_path}")
+        log_to_master(f"  Ablation: {ablation_summary_path}")
 
 
 if __name__ == "__main__":
