@@ -841,7 +841,7 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
             print(f"   Registering artifact in database...")
             logger.info(f"MINIO_REGISTER_START | run={run_id} | file={filename} | sha256={sha256[:16]}...")
             
-            event_emitter.artifact_registered(
+            register_success = event_emitter.artifact_registered(
                 run_id,
                 f"runs/{run_id}/{filename}",
                 len(file_bytes),
@@ -849,6 +849,12 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
                 content_type,
                 kind
             )
+            
+            if register_success:
+                logger.info(f"MINIO_REGISTER_SUCCESS | run={run_id} | file={filename}")
+            else:
+                logger.error(f"MINIO_REGISTER_FAILED | run={run_id} | file={filename} | Event emit returned False - check ingest API logs")
+                print(f"   ⚠️ Artifact uploaded to MinIO but registration failed - check server logs")
             
             logger.info(f"MINIO_UPLOAD_COMPLETE | run={run_id} | file={filename} | kind={kind} | size={len(file_bytes)}")
             print(f"✓ Artifact uploaded successfully: {filename}")
