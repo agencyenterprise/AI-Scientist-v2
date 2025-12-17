@@ -605,6 +605,7 @@ from datasets import load_dataset
             "Research idea": self.task_desc,
             "Previous (buggy) implementation": wrap_code(parent_node.code),
             "Execution output": wrap_code(parent_node.term_out, lang=""),
+            "Bug analysis and suggested fixes": parent_node.analysis if parent_node.analysis else "No detailed analysis available.",
             "Feedback based on generated plots": parent_node.vlm_feedback_summary,
             "Feedback about execution time": parent_node.exec_time_feedback,
             "Instructions": {},
@@ -1049,7 +1050,8 @@ from datasets import load_dataset
                 )
 
                 # Escape LLM response to avoid Rich markup parsing issues
-                print(f"[cyan]Plot selection response:[/cyan] {rich_escape(response_select_plots)}")
+                # Note: response_select_plots is a dict, must convert to str before escaping
+                print(f"[cyan]Plot selection response:[/cyan] {rich_escape(str(response_select_plots))}")
                 # Extract the plot paths list
                 selected_plots = response_select_plots.get("selected_plots", [])
 
@@ -1855,7 +1857,8 @@ class ParallelAgent:
                         # which sets child_node.is_buggy to True, thereby
                         # causing child_node.metric to be assigned WorstMetricValue.
                         # Escape LLM response to avoid Rich markup parsing issues
-                        print(f"[blue]Metrics:[/blue] {rich_escape(metrics_response)}")
+                        # Note: metrics_response is a dict, must convert to str before escaping
+                        print(f"[blue]Metrics:[/blue] {rich_escape(str(metrics_response))}")
                         if metrics_response["valid_metrics_received"]:
                             child_node.metric = MetricValue(
                                 value={"metric_names": metrics_response["metric_names"]}
