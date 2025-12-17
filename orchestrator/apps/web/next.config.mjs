@@ -6,6 +6,8 @@ const nextConfig = {
       bodySizeLimit: "2mb"
     }
   },
+  // Prevent bundling of server-side only packages
+  serverExternalPackages: ['pino', 'pino-pretty', 'thread-stream'],
   // Enable server logging in production
   logging: {
     fetches: {
