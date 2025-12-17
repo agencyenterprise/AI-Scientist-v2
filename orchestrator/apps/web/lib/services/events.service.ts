@@ -16,19 +16,33 @@ export async function processEvent(event: CloudEventsEnvelope): Promise<void> {
   logger.info({ 
     eventType: event.type, 
     runId: runId.slice(0, 8),
-    seq: eventSeq 
+    seq: eventSeq,
+    eventId: event.id.slice(0, 8)
   }, "Processing event")
 
   if (eventSeq !== undefined) {
     const run = await findRunById(runId)
     if (!run) {
-      logger.warn({ runId, eventId: event.id }, "Run not found for event")
+      logger.warn({ runId, eventId: event.id, eventType: event.type }, "Run not found for event")
       return
     }
 
     const lastSeq = run.lastEventSeq ?? 0
     if (eventSeq <= lastSeq) {
-      logger.info({ runId, eventSeq, lastSeq }, "Ignoring out-of-order or duplicate event")
+      // IMPORTANT: Artifact registration events should NEVER be dropped silently
+      // They are critical for data integrity - log with full details
+      if (event.type === "ai.artifact.registered") {
+        logger.warn({ 
+          runId, 
+          eventSeq, 
+          lastSeq, 
+          eventType: event.type,
+          artifactKey: event.data?.key,
+          artifactKind: event.data?.kind
+        }, "CRITICAL: Dropping artifact registration event due to sequence mismatch! This may cause missing artifacts.")
+      } else {
+        logger.info({ runId, eventSeq, lastSeq, eventType: event.type }, "Ignoring out-of-order or duplicate event")
+      }
       return
     }
   }
@@ -344,17 +358,42 @@ async function handleArtifactRegistered(
   const data = event.data
   const { randomUUID } = await import("node:crypto")
   
-  await createArtifact({
-    _id: randomUUID(),
-    runId,
+  const artifactId = randomUUID()
+  logger.info({ 
+    runId: runId.slice(0, 8), 
+    artifactId: artifactId.slice(0, 8),
     key: data.key,
-    uri: data.key,
-    contentType: data.content_type,
+    kind: data.kind,
     size: data.bytes,
-    kind: data.kind,  // Include artifact kind (paper, archive, code, plot, etc.)
-    sha256: data.sha256,  // Include checksum for integrity
-    createdAt: new Date(event.time)
-  })
+    seq: eventSeq
+  }, "Creating artifact record")
+  
+  try {
+    await createArtifact({
+      _id: artifactId,
+      runId,
+      key: data.key,
+      uri: data.key,
+      contentType: data.content_type,
+      size: data.bytes,
+      kind: data.kind,  // Include artifact kind (paper, archive, code, plot, etc.)
+      sha256: data.sha256,  // Include checksum for integrity
+      createdAt: new Date(event.time)
+    })
+    logger.info({ 
+      runId: runId.slice(0, 8), 
+      artifactId: artifactId.slice(0, 8),
+      kind: data.kind
+    }, "Artifact created successfully")
+  } catch (error) {
+    logger.error({ 
+      runId, 
+      key: data.key, 
+      kind: data.kind, 
+      error 
+    }, "Failed to create artifact record")
+    throw error
+  }
 }
 
 async function transitionRunStatus(

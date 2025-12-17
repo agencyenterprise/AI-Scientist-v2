@@ -66,11 +66,11 @@ export async function POST(
       logMinIO('INFO', 'PRESIGN_PUT_START', { runId, objectKey, bucket: env.MINIO_BUCKET })
       
       try {
-        url = await minioClient.presignedPutObject(
-          env.MINIO_BUCKET,
-          objectKey,
-          24 * 60 * 60 // 24 hours
-        )
+      url = await minioClient.presignedPutObject(
+        env.MINIO_BUCKET,
+        objectKey,
+        24 * 60 * 60 // 24 hours
+      )
         
         logMinIO('INFO', 'PRESIGN_PUT_SUCCESS', {
           runId,
@@ -93,11 +93,11 @@ export async function POST(
       logMinIO('INFO', 'PRESIGN_GET_START', { runId, objectKey, bucket: env.MINIO_BUCKET })
       
       try {
-        url = await minioClient.presignedGetObject(
-          env.MINIO_BUCKET,
-          objectKey,
-          24 * 60 * 60 // 24 hours
-        )
+      url = await minioClient.presignedGetObject(
+        env.MINIO_BUCKET,
+        objectKey,
+        24 * 60 * 60 // 24 hours
+      )
         
         logMinIO('INFO', 'PRESIGN_GET_SUCCESS', {
           runId,

@@ -82,7 +82,7 @@ class RedirectQueue:
 
     def flush(self):
         pass
-    
+
     def isatty(self):
         """Required by torch.compile/TorchDynamo to check if stdout is a TTY."""
         return False

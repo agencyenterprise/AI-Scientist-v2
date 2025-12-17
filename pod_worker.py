@@ -841,6 +841,11 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
             print(f"   Registering artifact in database...")
             logger.info(f"MINIO_REGISTER_START | run={run_id} | file={filename} | sha256={sha256[:16]}...")
             
+            # CRITICAL: Sync CloudEventEmitter's sequence counter with the batched emitter
+            # This ensures artifact events have seq > run.lastEventSeq and won't be rejected
+            global EVENT_SEQ
+            event_emitter.set_seq_counter(EVENT_SEQ)
+            
             register_success = event_emitter.artifact_registered(
                 run_id,
                 f"runs/{run_id}/{filename}",
@@ -849,6 +854,9 @@ def upload_artifact(run_id: str, file_path: str, kind: str, max_retries: int = 3
                 content_type,
                 kind
             )
+            
+            # Update EVENT_SEQ to match what CloudEventEmitter just used
+            EVENT_SEQ = event_emitter.seq_counter
             
             if register_success:
                 logger.info(f"MINIO_REGISTER_SUCCESS | run={run_id} | file={filename}")
@@ -1293,6 +1301,11 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
     CURRENT_RUN_ID = run_id
     EVENT_SEQ = 0
     
+    # CRITICAL: Sync CloudEventEmitter's sequence counter with the batched emitter
+    # Both emitters MUST use the same sequence numbers to avoid out-of-order rejections
+    # Without this, artifact_registered events get rejected because their seq < lastEventSeq
+    event_emitter.set_seq_counter(EVENT_SEQ)
+    
     print(f"\n{'='*60}")
     print(f"🚀 Starting experiment: {run_id}")
     print(f"{'='*60}\n")
@@ -1559,7 +1572,10 @@ def run_experiment_pipeline(run: Dict[str, Any], mongo_client):
             print("\n📄 Generating paper...")
             from ai_scientist.perform_icbinb_writeup import gather_citations, perform_writeup
             
+            # Sync event_emitter sequence before paper events
+            event_emitter.set_seq_counter(EVENT_SEQ)
             event_emitter.paper_started(run_id)
+            EVENT_SEQ = event_emitter.seq_counter
             event_emitter.log(run_id, f"Gathering citations using model: {small_model} (15 rounds)", "info", "Stage_3")
             
             db['runs'].update_one(

@@ -176,7 +176,7 @@ async function processExtractionInBackground(
       extractedText = await extractor.extractPlainText(url)
     } else {
       console.error('[Extract Background] Using ChatGPT extractor...')
-      const extractor = new ChatGPTSharedExtractor()
+    const extractor = new ChatGPTSharedExtractor()
       extractedText = await extractor.extractPlainText(url)
     }
 

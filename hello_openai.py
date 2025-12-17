@@ -21,7 +21,7 @@ def main() -> int:
 
     client = OpenAI()
     prompt = "Say a friendly hello world in one short sentence."
-    
+
     # Test model - change this to test different models
     model = "gpt-5.2"
     print(f"Testing model: {model}")

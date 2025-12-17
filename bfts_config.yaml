@@ -23,12 +23,12 @@ exec:
 generate_report: True
 # LLM settings for final report from journal
 report:
-  model: gpt-5-mini
+  model: gpt-5.2
   temp: 1.0
 
 # LLM settings for paper writeup
 writeup:
-  big_model: gpt-5
+  big_model: gpt-5.2
   small_model: gpt-5-mini
   plot_model: gpt-5-mini
 
@@ -70,13 +70,13 @@ agent:
 
   # LLM settings for coding
   code:
-    model: gpt-5
+    model: gpt-5.2
     temp: 1.0
     max_tokens: 12000
 
   # LLM settings for evaluating program output / tracebacks
   feedback:
-    model: gpt-5
+    model: gpt-5.2
     # gpt-4o
     temp: 0.5
     max_tokens: 8192
