@@ -401,6 +401,15 @@ from datasets import load_dataset
             "  - Don't default to distilgpt2 (82M) when you can use gpt2-medium (355M) or gpt2-large (774M)",
             "  - Aim for a paper-worthy experiment, not a homework assignment",
             "",
+            "*** CRITICAL HUGGINGFACE TRANSFORMERS GOTCHAS ***",
+            "  - If you need attention weights (output_attentions=True), you MUST use attn_implementation='eager'",
+            "  - This MUST be set in from_pretrained(), NOT after loading! Setting model.config.attn_implementation after loading DOES NOT WORK.",
+            "  - CORRECT: model = AutoModelForCausalLM.from_pretrained('gpt2', attn_implementation='eager')",
+            "  - WRONG: model = AutoModelForCausalLM.from_pretrained('gpt2'); model.config.attn_implementation = 'eager'  # This does NOT work!",
+            "  - The reason: attention layers are instantiated during from_pretrained() with the default SDPA implementation",
+            "  - For datasets that require custom code (like 'openwebtext'), use trust_remote_code=True in load_dataset()",
+            "  - Always check if a dataset is gated (requires HF login) and avoid those - use freely accessible alternatives",
+            "",
         ]
         if hasattr(self.cfg.experiment, "num_syn_datasets"):
             num_syn_datasets = self.cfg.experiment.num_syn_datasets
@@ -615,6 +624,17 @@ from datasets import load_dataset
             "Bugfix improvement sketch guideline": [
                 "You should write a brief natural language description (3-5 sentences) of how the issue in the previous implementation can be fixed.",
                 "Don't suggest to do EDA.",
+            ],
+            "CRITICAL: Common HuggingFace bugs and their CORRECT fixes": [
+                "If you see 'output_attentions is not supported with attn_implementation sdpa':",
+                "  - WRONG FIX: model.config.attn_implementation = 'eager' (this does NOT work after loading!)",
+                "  - CORRECT FIX: model = AutoModelForCausalLM.from_pretrained('model_name', attn_implementation='eager')",
+                "  - The attn_implementation MUST be passed to from_pretrained(), setting it on config after loading has no effect!",
+                "If you see 'dataset contains custom code' error:",
+                "  - Use trust_remote_code=True in load_dataset()",
+                "If you see CUDA device-side assert or similar GPU errors:",
+                "  - Check tensor shapes and dtypes match what the model expects",
+                "  - Ensure all tensors are on the same device",
             ],
         }
         prompt["Instructions"] |= self._prompt_impl_guideline
