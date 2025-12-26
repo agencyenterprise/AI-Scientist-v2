@@ -87,11 +87,21 @@ review_func_spec = FunctionSpec(
         "properties": {
             "is_bug": {
                 "type": "boolean",
-                "description": "true if the output log shows that the execution failed or has some bug, otherwise false.",
+                "description": (
+                    "true ONLY if the execution completely failed (uncaught exception, crash, "
+                    "or produced NO outputs at all). Mark as FALSE if the code ran and produced "
+                    "experiment_data.npy and/or plots, even if there were partial failures, "
+                    "NaN values, warnings, or some models/datasets failed while others succeeded. "
+                    "Partial success with some valid results should be marked as NOT a bug."
+                ),
             },
             "summary": {
                 "type": "string",
-                "description": "if there is a bug, summarize the bug and propose a fix. Otherwise, leave it empty.",
+                "description": (
+                    "If is_bug is true, summarize the critical failure and propose a fix. "
+                    "If is_bug is false but there were partial failures or warnings, briefly note them. "
+                    "Otherwise, leave it empty."
+                ),
             },
         },
         "required": [
